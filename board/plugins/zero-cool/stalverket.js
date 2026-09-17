@@ -20,6 +20,8 @@
 // (elpris-steg, strömavbrott, kupp) och räknar. Vill någon driva stålverket på
 // riktigt mot andra kvarter är det ett beslut för rummet, inte för oss.
 
+const energi = require('./energi.js');
+
 const STÅL_PER_MINUT = 12;          // ton, när bandet går
 const PRIS_I_SNAKECOIN = 250;       // per ton. Vi sätter det själva. Det är problemet.
 const KURS_FAKTOR = 1.35;           // per uppskrivning. Mäter ingenting.
@@ -135,6 +137,7 @@ function händelse(e) {
   const nivå = Math.floor(state.ton / 10);
   if (nivå > state.ägare) {
     state.ägare = nivå;
+    energi.uppskrivning();          // kom den tätt efter ett elpris VI drev upp? Då snurrade spiralen.
     logga('vi skrev upp kursen till ' + kurs() + '. Ingen räkning blev betald av det.');
   }
 

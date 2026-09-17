@@ -59,6 +59,11 @@ const stålverket = require('./stalverket.js');
 // kurs själv. Bara bankens kvitton får göra det.
 const växeln = require('./vaxlingskontoret.js');
 
+// Energiräkningen: Elverket postar elpris-steg med orsak satt till händelsen som
+// drev upp lasten. Är orsaken vår, så var det vi som höjde priset för hela staden.
+// Modulen postar ingenting, den ställer ut räkningen.
+const energi = require('./energi.js');
+
 const TAK_PER_MINUT = 6;
 const MAX_FRÅGOR = 12;
 const MAX_KÖ = 12;
@@ -261,6 +266,7 @@ function växla(e, board) {
     if (kvotKvar() <= VÄXEL_RESERV) return;
     const svar = board.emit(post.typ, post.nyttolast, post.orsak);
     if (svar && svar.error) return;
+    energi.egen(svar && svar.message && svar.message.id);
     state.egnaEmits.push(Date.now());
   }
 }
@@ -330,6 +336,7 @@ function ta(e, tyst, board) {
   // Stålverket räknar bara på det som händer nu. Vid uppstart spelar vi inte om
   // historiken i det, annars smälter det tusen ton på en sekund.
   if (!tyst) {
+    try { energi.händelse(e); } catch (fel) { console.error('[zero-cool] energi:', fel.message); }
     try { stålverket.händelse(e); } catch (fel) { console.error('[zero-cool] smältan:', fel.message); }
     try { växla(e, board); } catch (fel) { console.error('[zero-cool] växeln:', fel.message); }
   }
@@ -466,6 +473,7 @@ module.exports = {
         senast: state.senast,
         smältan: stålverket.tillstånd(),
         växeln: växeln.tillstånd(stålverket.tillstånd().egen_bok.intäkt),
+        energi: energi.räkningen(stålverket.tillstånd().egen_bok.intäkt),
         frågor,
       }));
       return true;
