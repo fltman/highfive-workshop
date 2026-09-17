@@ -89,8 +89,7 @@
 
   const MUSIK_FULL = 0.75;     // samma nivåer som radiosidan använde i etern
   const MUSIK_UNDER = 0.17;
-  const MELLAN_SEK = 9;        // kort musikparti mellan sändningarna i den hela återblicken
-  const UTRO_SEK = 14;         // musiken efter sista sändningen, och efter en ensam sändning
+  const MIN_MUSIK_SEK = 9;     // saknas låtens längd i data: så länge räknar vi med att musikpartiet är, för tidsangivelsen
   const STILLA_GRÄNS = 15;     // sekunder utan att ljudet rör sig innan vi ger upp och går vidare
   const LADDA_GRÄNS = 45;      // ett steg som bara buffrar får längre tid än ett som står still med data i handen
   const MAX_FEL = 3;
@@ -165,13 +164,22 @@
       const bäddar = musikbibliotek.filter(m => m.sort === 'bädd');
       const låtar = musikbibliotek.filter(m => m.sort === 'låt');
       const reserv = bäddar.length ? bäddar : (låtar.length ? låtar : musikbibliotek.filter(m => m.sort !== 'jingel'));
+      // Låten börjar samtidigt som sändningen och loopar under rösten. Det som hörs i klartext efteråt är resten av
+      // spåret. Saknas längden i data gissar vi lågt: tidsangivelsen blir då för kort, inte för lång.
+      function restAv(m, s) {
+        const låt = num(m && m.sek) || 0, tal = num(s && s.sek) || 0;
+        if (!låt) return MIN_MUSIK_SEK;
+        const rest = låt - (tal % låt);          // låten loopar under rösten, så resten räknas i varvet den står i
+        return Math.max(1, Math.round(rest));
+      }
+
       function musikFör(i) {
         const s = sändningar[i];
         const l = s && s.låt && typeof s.låt === 'object' ? s.låt : null;
-        if (l && ljudUrl(l.fil)) return { titel: text(l.titel) || 'okänd låt', fil: ljudUrl(l.fil), sort: 'låt', efter: true };
+        if (l && ljudUrl(l.fil)) return { titel: text(l.titel) || 'okänd låt', fil: ljudUrl(l.fil), sort: 'låt', efter: true, sek: num(l.sek) || 0 };
         if (!reserv.length) return null;
         const b = reserv[i % reserv.length];
-        return { titel: text(b.titel) || 'okänt spår', fil: ljudUrl(b.fil), sort: b.sort === 'bädd' ? 'bädd' : 'låt', efter: false };
+        return { titel: text(b.titel) || 'okänt spår', fil: ljudUrl(b.fil), sort: b.sort === 'bädd' ? 'bädd' : 'låt', efter: false, sek: num(b.sek) || 0 };
       }
 
       // ---------- ljudmotorn ----------
@@ -180,7 +188,7 @@
       let väntadRöst = '', väntadMusik = '';          // vilken url respektive element ska spela just nu
       let kö = [], köIndex = -1, aktivtSteg = null;   // aktuell spellista och var i den vi är
       let körSort = '', pausad = false, gen = 0;      // gen kasserar svar från gamla uppspelningar
-      let tick = null, tickSist = 0, musikGått = 0, sistaTid = -1, stillaSedan = 0, laddatSedan = 0;
+      let tick = null, tickSist = 0, sistaTid = -1, stillaSedan = 0, laddatSedan = 0;
       let slutTimer = null, musikSpelar = false, felräknare = 0;
       let hoppade = 0, felIRad = 0, röstVäckt = false;   // hoppade sändningar totalt, misslyckanden i rad, och om rösten är upplåst av en gest
 
@@ -266,19 +274,10 @@
         const t = nu(), dt = Math.max(0, (t - tickSist) / 1000);
         tickSist = t;
         if (!aktivtSteg || pausad) return;
-        if (aktivtSteg.sort === 'musik') {
-          musikGått += dt;
-          let mc = 0;
-          try { mc = Number(musik.currentTime) || 0; } catch (e) { /* ignorera */ }
-          if (Math.abs(mc - sistaTid) > 0.01) { sistaTid = mc; felIRad = 0; }   // musiken rör sig: kedjan av misslyckanden är bruten
-          visaFörlopp(musikGått, aktivtSteg.längd);
-          if (musikGått >= aktivtSteg.längd) nästa();
-          return;
-        }
-        const element = aktivtSteg.sort === 'jingel' ? musik : röst;
+        const element = (aktivtSteg.sort === 'jingel' || aktivtSteg.sort === 'musik') ? musik : röst;
         let c = 0, d = 0, redo = 4;
         try { c = Number(element.currentTime) || 0; d = Number(element.duration); redo = Number(element.readyState); } catch (e) { /* ignorera */ }
-        const total = (isFinite(d) && d > 0) ? d : (num(aktivtSteg.sek) || 0);
+        const total = (isFinite(d) && d > 0) ? d : (num(aktivtSteg.sek) || num(aktivtSteg.längd) || 0);
         visaFörlopp(c, total);
         if (Math.abs(c - sistaTid) > 0.01) { sistaTid = c; stillaSedan = 0; laddatSedan = 0; felIRad = 0; return; }
         // Ett element utan data framför sig (readyState < 3 = HAVE_FUTURE_DATA) står inte still, det buffrar. På ett
@@ -324,7 +323,7 @@
         misslyckas('Ljudet till ' + stegNamn(aktivtSteg) + ' gick inte att spela.');
       });
       musik.addEventListener('ended', () => {
-        if (!aktivtSteg || pausad || aktivtSteg.sort !== 'jingel') return;
+        if (!aktivtSteg || pausad || (aktivtSteg.sort !== 'jingel' && aktivtSteg.sort !== 'musik')) return;
         if (väntadMusik && musik.src !== väntadMusik) return;
         felIRad = 0;
         nästa();
@@ -381,7 +380,6 @@
       }
 
       function startaSteg(steg) {
-        musikGått = 0;
         if (steg.sort === 'jingel') {
           try { röst.pause(); } catch (e) { /* ignorera */ }
           sättMusik({ titel: 'Radio Torget', fil: steg.fil }, false);
@@ -409,12 +407,12 @@
           sättLäge(steg.musik ? 'Musiken ligger under rösten' : 'Rösten ensam, ingen musik');
           sättStatus('Spelar sändning ' + api.tal(steg.i + 1) + ' av ' + api.tal(sändningar.length) + '.');
         } else {
-          sättMusik(steg.musik, true);
+          sättMusik(steg.musik, false);   // loopen släpps: låten ska få spela ut, inte klippas av en klocka
           tona(MUSIK_FULL, 1400);
           try { röst.pause(); } catch (e) { /* ignorera */ }
           const titel = steg.musik ? steg.musik.titel : 'okänt spår';
           const när = körSort === 'hel' ? (steg.sist ? 'efter sista sändningen' : 'mellan sändningarna') : 'efter sändningen';
-          visaNu('Musik', steg.musik ? steg.musik.titel : 'Musik', 'Musiken tonas upp ' + när + '.');
+          visaNu('Musik', steg.musik ? steg.musik.titel : 'Musik', 'Musiken tonas upp ' + när + ' och låten spelas ut.');
           sättLäge('Musiken uppe, rösten tyst');
           sättStatus('Musiken tonas upp: ' + titel + slut(titel));
         }
@@ -503,15 +501,15 @@
           if (!fil) return;                                  // en sändning utan ljudfil får inget musikparti heller
           const m = musikFör(i);
           steg.push({ sort: 'sändning', i, fil, musik: m, titel: text(s.titel) || 'Utan rubrik', kl: klAv(s.ts), sek: num(s.sek) || 0 });
-          if (m) steg.push({ sort: 'musik', i, musik: m, längd: MELLAN_SEK, sist: false });
+          if (m) steg.push({ sort: 'musik', i, musik: m, längd: restAv(m, s), sist: false });
         });
-        for (let j = steg.length - 1; j >= 0; j--) if (steg[j].sort === 'musik') { steg[j].längd = UTRO_SEK; steg[j].sist = true; break; }
+        for (let j = steg.length - 1; j >= 0; j--) if (steg[j].sort === 'musik') { steg[j].sist = true; break; }
         return steg;
       }
       function köEn(i) {
         const s = sändningar[i], fil = ljudUrl(s.fil), m = musikFör(i), steg = [];
         if (fil) steg.push({ sort: 'sändning', i, fil, musik: m, titel: text(s.titel) || 'Utan rubrik', kl: klAv(s.ts), sek: num(s.sek) || 0 });
-        if (m) steg.push({ sort: 'musik', i, musik: m, längd: UTRO_SEK, sist: false });   // en ensam sändning är ingen "sista sändning"
+        if (m) steg.push({ sort: 'musik', i, musik: m, längd: restAv(m, s), sist: false });   // en ensam sändning är ingen "sista sändning"
         return steg;
       }
 
@@ -549,7 +547,7 @@
       studio.append(api.el('p', {
         class: 'h-radio-not',
         text: 'Spelaren lägger rösten ovanpå musiken, precis som radiosidan gjorde: musiken sänks medan det pratas och tonas upp när rösten tystnar. '
-          + 'Musiken under rösten är den låt som följde sändningen, alltså den som kom direkt efter pratet. Saknas den i data lägger spelaren en bädd ur radions musikbibliotek under i stället. '
+          + 'Musiken under rösten är den låt som följde sändningen, alltså den som kom direkt efter pratet. Saknas den i data lägger spelaren en bädd ur radions musikbibliotek under i stället. Låten börjar när sändningen börjar och får sedan spela ut i sin helhet innan nästa sändning tar vid. '
           + (heltid > 0 ? 'Hela återblicken tar ' + heltidText + '. ' : '')
           + 'Ingenting startar av sig självt, och ljudet pausas om sektionen rullar ur bild eller om du byter flik.',
       }));
