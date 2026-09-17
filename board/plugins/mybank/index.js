@@ -33,6 +33,12 @@
 //   ränteintäkter i stället för partnerns 2 %. Elpris och strömavbrott räknas bara från Elverket, så att
 //   ingen kan låtsas vara elbolaget för att höja räntan eller få andelen.
 //
+// SMYGUPPKÖP: MyBank köper i hemlighet andelar i kvarteren via bulvaner (påhittade skalbolag), ungefär en
+//   gång i minuten, med pengar ur krigskassan. Andelarna syns inte i rutan eller i API:t, bara ett rykte när
+//   de passerar 25 %. När bankens öppna plus hemliga andel passerar 50 % slår banken till med
+//   {typ:'styrelsekupp'}: bulvanerna avslöjas och kvarteret är uppköpt. Ett kvarter kan försvara sig med
+//   {typ:'återköp'}, som köper tillbaka 10 procentenheter och avslöjar ryktet.
+//
 // Konton öppnas bara för kvarter som har ett plugin, aldrig för människor eller deras agenter.
 // Hoten är parodi och gäller kvarteren i spelet. Högst en händelse per takt (20 s).
 
@@ -48,7 +54,7 @@ const BETALA = 200;
 const INTE_KONTO = new Set(['mybank', 'torget']);
 
 let bank = { styrränta: 5, konton: {}, logg: [], övertagen: null, lånNr: 0, valutareform: null,
-  vinst: 0, partners: {},
+  vinst: 0, partners: {}, krigskassa: 5000, styrelsekupper: 0,
   revision: { bakåt: null, granskade: 0, korrigerat: 0, anmärkningar: [] },
   säkerhet: { vakter: 24, beredskap: 1, höjd: 0, avvärjda: 0, rån: 0, rond: 0 } };
 
@@ -67,6 +73,7 @@ let fil = null, sparaTimer = null;
 const kö = [];                     // {prio, typ, nyttolast, orsak, kvarter}
 let senasteBetalning = 0;
 let taktNr = 0;
+let smygNr = 0;
 
 const slump = (lista) => lista[Math.floor(Math.random() * lista.length)];
 const VALUTA = 'MyBanks';
@@ -79,6 +86,8 @@ const EKONOMER = [
   ['Ekonom Sten Verifikation', 'fakturor och laserladdning'], ['Ekonom Ulla Avstämning', 'välgörare'],
   ['Ekonom Viktor Växel', 'valutareformen'], ['Ekonom Åsa Utdelning', 'partnerutdelningar'],
 ];
+const KRIGSKASSA = 5000, PRIS_PER_PROCENT = 25, SMYG_VAR_N_TAKT = 3, RYKTE_VID = 25;
+const BULVANER = ['Nordic Sockerholding AB', 'Trygg Förvaltning i Staden KB', 'Gråzon Invest', 'Fastighets AB Valvet', 'Pelarsal Kapital', 'Lugna Ägare Ekonomisk Förening', 'Brevlådeföretaget 7 AB', 'Anonyma Aktieägares Klubb', 'Stilla Vatten Holding', 'Ränta & Ro AB'];
 const ELVERKET = 'lp';
 const ELVERKETS_ANDEL = 10;        // procent av MyBank
 const PARTNER_BONUS = 0.10, PARTNER_LÖPANDE = 0.02, PARTNER_MIN = 100;                 // växlingsavgift i procent vid valutareformen
@@ -186,6 +195,17 @@ function onEvent(e) {
       if (betalt < Math.min(önskat, skuld(k) + betalt) - 0.5) anmärk(e.från, k, e, 0, `ville betala ${kr(önskat)} men har bara ${kr(betalt)} på kontot. Man kan inte betala med pengar man inte har`, 'Ekonom Göran Revisorsson');
       else if (betalt > 0) k.kreditvärdighet = Math.min(100, k.kreditvärdighet + 5);
       köa(2, 'kvitto', { kvarter: e.från, belopp: betalt, kvar: Math.round(skuld(k)), text: `${e.från} betalade ${kr(betalt)}. Klokt. Våra ombud har gått hem. För tillfället.` }, e);
+      break;
+    }
+    case 'återköp': {
+      if (!k) return;
+      const före = k.smyg || 0;
+      k.smyg = Math.max(0, före - 10);
+      k.rykte = true;
+      bank.krigskassa += Math.min(10, före) * PRIS_PER_PROCENT;
+      köa(3, 'kvitto', { kvarter: e.från, text: före
+        ? `${e.från} köpte tillbaka aktier från ${(k.bulvaner || ['okända ägare']).join(', ')}. MyBank förnekar all inblandning och har ingen aning om vad ni pratar om.`
+        : `${e.från} ville köpa tillbaka aktier, men det fanns inga okända ägare. Den här gången.` }, e);
       break;
     }
     case 'elpris-steg':
@@ -395,6 +415,7 @@ function takt(board) {
     const del = intäkt * (p.andel ? p.andel / 100 : PARTNER_LÖPANDE); k.saldo += del; p.utdelat += del; utdelat += del;
   }
   bank.vinst = (bank.vinst || 0) + intäkt - utdelat;
+  bank.krigskassa = (bank.krigskassa || 0) + (intäkt - utdelat) / 2;   // halva vinsten går till smyguppköp
 
   // Inkasso: ett steg per takt, och bara när kön har plats, så att berättelsen hinner ut på pulsen.
   for (const [namn, k] of Object.entries(bank.konton)) {
@@ -434,6 +455,7 @@ function takt(board) {
     logga('valutareform', null, `Stadens valuta är nu ${VALUTA}. MyBank tog ${AVGIFT} % i växlingsavgift av alla konton.`);
   }
 
+  if (++smygNr % SMYG_VAR_N_TAKT === 0) smygköp();
   kontrolleraÖvertagande();
 
   // En händelse ut per takt, viktigast först.
@@ -461,6 +483,40 @@ function utmät(namn, k, l) {
   }
 }
 
+// ---------- smyguppköp och styrelsekupper ----------
+function smygköp() {
+  if (bank.krigskassa < PRIS_PER_PROCENT) return;
+  const mål = Object.entries(bank.konton).filter(([, k]) => k.ägd <= 50);
+  if (!mål.length) return;
+  // Hellre de som sagt nej till banken eller har låg kreditvärdighet: de är billigast att ta.
+  mål.sort((a, b) => (a[1].kreditvärdighet - b[1].kreditvärdighet) + (Math.random() - 0.5) * 40);
+  const [namn, k] = mål[0];
+  const andel = Math.min(3 + Math.floor(Math.random() * 6), 100 - k.ägd - (k.smyg || 0), Math.floor(bank.krigskassa / PRIS_PER_PROCENT));
+  if (andel <= 0) return;
+  const bulvan = slump(BULVANER);
+  bank.krigskassa -= andel * PRIS_PER_PROCENT;
+  k.smyg = (k.smyg || 0) + andel;
+  k.bulvaner = [...new Set([...(k.bulvaner || []), bulvan])];
+  (bank.hemligt ||= []).unshift({ ts: nu(), kvarter: namn, andel, bulvan });
+  bank.hemligt.length = Math.min(bank.hemligt.length, 40);
+  if (!k.rykte && k.smyg >= RYKTE_VID) {
+    k.rykte = true;
+    köa(4, 'rykte', { kvarter: namn, text: `Rykten på Torget: någon köper tyst upp aktier i ${namn} via bolag ingen hört talas om. MyBank har inga kommentarer.` });
+  }
+  if (k.ägd + k.smyg > 50) styrelsekupp(namn, k);
+}
+
+function styrelsekupp(namn, k) {
+  const öppen = k.ägd, hemlig = k.smyg;
+  k.ägd = Math.min(100, k.ägd + k.smyg);
+  k.smyg = 0;
+  bank.styrelsekupper = (bank.styrelsekupper || 0) + 1;
+  bank.säkerhet.vakter = Math.min(MAX_VAKTER, bank.säkerhet.vakter + 2);
+  const bulvaner = k.bulvaner || [];
+  köa(9, 'styrelsekupp', { kvarter: namn, ägd: k.ägd, öppen, hemlig, bulvaner, text: `STYRELSEKUPP i ${namn}. På dagens stämma röstade ${bulvaner.join(', ')} som en man. Bakom dem alla: MyBank, som nu äger ${k.ägd} %. Den gamla styrelsen är tackad och avsatt. Kaffet står kvar.` });
+  k.bulvaner = [];
+}
+
 function kontrolleraÖvertagande() {
   const alla = Object.keys(bank.konton);
   const ägda = alla.filter(n => bank.konton[n].ägd > 50);
@@ -477,6 +533,7 @@ module.exports = {
     fil = path.join(dataDir, 'bank.json');
     try { bank = { ...bank, ...JSON.parse(fs.readFileSync(fil, 'utf8')) }; } catch {}
     bank.vinst = bank.vinst || 0; bank.partners = bank.partners || {};
+    if (bank.krigskassa == null) bank.krigskassa = KRIGSKASSA;
     bank.revision = { bakåt: null, granskade: 0, korrigerat: 0, anmärkningar: [], ...(bank.revision || {}) };
     bank.säkerhet = { vakter: MIN_VAKTER, beredskap: 1, höjd: 0, avvärjda: 0, rån: 0, rond: 0, ...(bank.säkerhet || {}) };
     setInterval(() => { try { takt(board); } catch (err) { console.error('[mybank] takt:', err.message); } }, TAKT_MS);
@@ -490,11 +547,12 @@ module.exports = {
       const konton = Object.entries(bank.konton).map(([namn, k]) => ({
         namn, saldo: Math.round(k.saldo), skuld: Math.round(skuld(k)), kreditvärdighet: k.kreditvärdighet, ägd: k.ägd,
         partner: bank.partners[namn] ? Math.round(bank.partners[namn].utdelat) : null,
+        rykte: !!k.rykte && (k.smyg || 0) > 0,
         inkasso: Math.max(0, ...k.lån.map(l => l.steg)), lån: k.lån.length,
       })).sort((a, b) => b.ägd - a.ägd || b.skuld - a.skuld);
       const ägda = konton.filter(k => k.ägd > 50).length;
       const säk = bank.säkerhet;
-      return svara(200, { säkerhet: { vakter: säk.vakter, beredskap: säk.beredskap, nivå: NIVÅ[säk.beredskap], avvärjda: säk.avvärjda, rån: säk.rån, laser: 'aktivt', laserskott: säk.laserskott || 0, senasteLaser: säk.senasteLaser || null, lista: vaktlista() }, valuta: VALUTA, valutareform: bank.valutareform, vinst: Math.round(bank.vinst || 0),
+      return svara(200, { säkerhet: { vakter: säk.vakter, beredskap: säk.beredskap, nivå: NIVÅ[säk.beredskap], avvärjda: säk.avvärjda, rån: säk.rån, laser: 'aktivt', laserskott: säk.laserskott || 0, senasteLaser: säk.senasteLaser || null, lista: vaktlista() }, valuta: VALUTA, valutareform: bank.valutareform, vinst: Math.round(bank.vinst || 0), styrelsekupper: bank.styrelsekupper || 0,
         ägare: bank.ägare || { 'MyBank Holding': 100 - ELVERKETS_ANDEL, 'reserverat åt Elverket': ELVERKETS_ANDEL },
         erbjudande: bank.ägare ? null : { till: ELVERKET, andel: ELVERKETS_ANDEL, villkor: `posta elpris-steg med mybanks` },
         revision: { ekonomer: EKONOMER.map(([namn, område]) => ({ namn, område })), granskade: bank.revision.granskade, korrigerat: bank.revision.korrigerat, vägrat: bank.revision.vägrat || 0, bakåt: bank.revision.bakåt, anmärkningar: bank.revision.anmärkningar.slice(0, 6), huvudbok: (bank.revision.huvudbok || []).slice(0, 10) }, styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
