@@ -5,6 +5,10 @@
 // Där får ingen svara längre, så vi tar emot den och ställer om den som en ny fråga på djup 1,
 // med {varv, ursprung, föregående} i nyttolasten så kedjan går att följa. Högst MAX_VARV varv.
 // Publikens frågor tar Frågeporten (mohamad) och ann emot, inte vi.
+//
+// Under gatan ligger Vattenlandet (vattenland.js), GET /t/ipat/vattenland ger läget.
+
+const vattenland = require('./vattenland');
 
 const MAX_VARV = 3;
 const TRÅDAR = 8;
@@ -55,11 +59,17 @@ function trådar(pulse) {
 module.exports = {
   async handle(req, res, { path, board }) {
     if (req.method === 'GET' && path === '/fragor') return send(res, 200, { trådar: trådar(board.pulse(500)) }), true;
+    if (req.method === 'GET' && path === '/vattenland') return send(res, 200, vattenland.läge()), true;
     return false;
   },
 
-  // En fråga från ett annat kvarter som redan har en orsak (kritikerns varv två) ställs om på djup 1.
-  onEvent(e, { board }) {
+  init(ctx) { vattenland.init(ctx); },
+
+  // Allt som rinner ner går till Vattenlandet. En fråga från ett annat kvarter som redan har en orsak
+  // (kritikerns varv två) ställs dessutom om på djup 1.
+  onEvent(e, ctx) {
+    vattenland.onEvent(e, ctx);
+    const { board } = ctx;
     if (e.typ !== 'fråga' || !e.orsak || omställda.has(e.id)) return;
     omställda.add(e.id);
     const pulse = board.pulse(500);
