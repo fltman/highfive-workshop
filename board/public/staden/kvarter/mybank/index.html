@@ -41,6 +41,17 @@
   .h.inkasso{border-left-color:#ff9f43} .h.utmätning,.h.uppköp,.h.stadsövertagande{border-left-color:var(--röd)}
   .h.lån-beviljat,.h.lån-erbjudande{border-left-color:var(--guld)} .h.välgörare,.h.kvitto{border-left-color:var(--grön)} .h.valutareform{border-left-color:var(--guld);background:#1f1a0c}
   .tomt{color:var(--dim);padding:12px 0}
+  /* Säkerhetsavdelningen */
+  .säk{background:var(--kort);border:1px solid var(--kant);border-radius:8px;padding:9px 10px}
+  .säk .topp{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .nivå{font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:11px;padding:2px 8px;border-radius:3px;border:1px solid}
+  .nivå.grön{color:var(--grön)} .nivå.gul{color:#f4d35e} .nivå.orange{color:#ff9f43} .nivå.röd{color:var(--röd);animation:puls 1s infinite}
+  .säk .antal{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums} .säk .antal small{font-size:11px;font-weight:400;color:var(--dim)}
+  .säk .stat{margin-left:auto;color:var(--dim);font-size:12px}
+  .trupp{margin:8px 0 6px;font-size:15px;line-height:1.25;letter-spacing:1px;word-break:break-all}
+  .poster{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 10px;font-size:11px;color:var(--dim)}
+  .poster b{color:var(--fg);font-weight:500}
+  .h.kupp-avvärjd{border-left-color:var(--grön);background:#0f2419} .h.bankrån{border-left-color:var(--röd);background:#2a0e0e} .h.beredskap{border-left-color:#ff9f43}
   footer{padding:4px 14px 10px;color:var(--dim);font-size:11px}
 </style></head>
 <body>
@@ -68,6 +79,13 @@
   <div id="övertagen" hidden></div>
 </header>
 <main>
+  <section><h2>Säkerhetsavdelningen</h2>
+    <div class="säk">
+      <div class="topp"><span class="nivå grön" id="nivå">beredskap grön</span><span class="antal" id="vakter">– <small>vakter i tjänst</small></span><span class="stat" id="säkstat"></span></div>
+      <div class="trupp" id="trupp" aria-hidden="true"></div>
+      <div class="poster" id="poster"></div>
+    </div>
+  </section>
   <section><h2>Kunder <span id="antal"></span></h2><div class="konton" id="konton"><div class="tomt">Banken räknar kvarteren…</div></div></section>
   <section><h2>Senaste affärerna</h2><div class="logg" id="logg"></div></section>
 </main>
@@ -75,7 +93,7 @@
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const sett = new Set(); let först = true;
-const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
+const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'AVVÄRJD', 'bankrån': 'BANKRÅN', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
 const STEG = ['', '📨', '😠', '🕶️', '⚖️'];
 
 function rita(l) {
@@ -87,6 +105,17 @@ function rita(l) {
   const öv = document.getElementById('övertagen');
   öv.hidden = !l.övertagen;
   if (l.övertagen) { öv.className = 'övertagen'; öv.textContent = `STADEN ÄR ÖVERTAGEN · ${l.övertagen.kvarter.join(', ')} tillhör MyBank`; }
+
+  const s = l.säkerhet;
+  if (s) {
+    const nv = document.getElementById('nivå'); nv.className = 'nivå ' + s.nivå; nv.textContent = 'beredskap ' + s.nivå;
+    document.getElementById('vakter').innerHTML = `${s.vakter} <small>vakter i tjänst</small>`;
+    document.getElementById('säkstat').textContent = `${s.avvärjda} kupper avvärjda · ${s.rån} rån`;
+    document.getElementById('trupp').textContent = '💂'.repeat(s.vakter);
+    // En rad per post med vakterna som står där just nu (posterna roterar varje takt).
+    const perPost = {}; for (const v of s.lista) (perPost[v.post] ||= []).push(v.namn.replace('Vakt ', ''));
+    document.getElementById('poster').innerHTML = Object.entries(perPost).map(([p, n]) => `<div><b>${esc(p)}</b> · ${esc(n.join(', '))}</div>`).join('');
+  }
 
   const k = document.getElementById('konton');
   if (l.konton.length) k.innerHTML = l.konton.map(x => `

@@ -12,6 +12,11 @@
 // Stadens valuta är MyBanks. När banken startar första gången utlyser den {typ:'valutareform'}:
 // kronor, krediter och stadsmynt växlas 1:1 mot MyBanks, med 3 % växlingsavgift till banken.
 //
+// SÄKERHET: en vaktstyrka på minst 24 namngivna vakter på fasta poster, beredskap i fyra nivåer.
+//   Varje kupp i staden höjer beredskapen och ger förstärkning. En kupp mot Banken (plats) prövas mot
+//   vakterna: avvärjs den postas {typ:'kupp-avvärjd'} och kuppmakaren får en räkning, lyckas den postas
+//   {typ:'bankrån'} och kunderna får betala via styrräntan. Beredskapen sjunker ett steg per två minuter lugn.
+//
 // Konton öppnas bara för kvarter som har ett plugin, aldrig för människor eller deras agenter.
 // Hoten är parodi och gäller kvarteren i spelet. Högst en händelse per takt (20 s).
 
@@ -26,7 +31,20 @@ const VÄLKOMST = 100;
 const BETALA = 200;
 const INTE_KONTO = new Set(['mybank', 'torget']);
 
-let bank = { styrränta: 5, konton: {}, logg: [], övertagen: null, lånNr: 0, valutareform: null };
+let bank = { styrränta: 5, konton: {}, logg: [], övertagen: null, lånNr: 0, valutareform: null,
+  säkerhet: { vakter: 24, beredskap: 1, höjd: 0, avvärjda: 0, rån: 0, rond: 0 } };
+
+// ---------- säkerhetsavdelningen ----------
+const MIN_VAKTER = 24, MAX_VAKTER = 60;
+const POSTER = ['Valvet', 'Huvudentrén', 'Kassahallen', 'Serverhallen', 'Iframe-gränsen', 'Taket', 'Lastkajen', 'Kontorsvåningen', 'Kassaskåpet', 'Personalingången', 'Bakgården', 'Styrrummet'];
+const EFTERNAMN = ['Ahlgren', 'Berg', 'Carlsson', 'Dahl', 'Ek', 'Falk', 'Gran', 'Hjort', 'Isaksson', 'Jarl', 'Kvist', 'Lind', 'Malm', 'Nord', 'Olin', 'Palm', 'Qvist', 'Rask', 'Stål', 'Tall', 'Ulf', 'Varg', 'Wall', 'Ygberg', 'Zetterlund', 'Åkerman', 'Ärlig', 'Öberg'];
+const NIVÅ = ['', 'grön', 'gul', 'orange', 'röd'];
+const vakt = (i) => `Vakt ${EFTERNAMN[i % EFTERNAMN.length]}${i >= EFTERNAMN.length ? ' ' + (Math.floor(i / EFTERNAMN.length) + 1) : ''}`;
+function vaktlista() {
+  const s = bank.säkerhet;
+  return Array.from({ length: s.vakter }, (_, i) => ({ namn: vakt(i), post: POSTER[(i + s.rond) % POSTER.length] }));
+}
+const mållBanken = (n) => /bank/i.test(String(n.plats || n.mål || n.kvarter || ''));
 let fil = null, sparaTimer = null;
 const kö = [];                     // {prio, typ, nyttolast, orsak, kvarter}
 let senasteBetalning = 0;
@@ -137,8 +155,12 @@ function onEvent(e) {
       köa(3, 'lån-erbjudande', { kvarter: e.från, belopp: 500, ränta: 49, text: `Slut på socker, ${e.från}? Snabblån på 500 MyBanks till bara 49 % ränta. Erbjudandet gäller tills vi ändrar oss.` }, e);
       break;
     }
-    case 'kupp': {
+    case 'kupp':
+    case 'rån':
+    case 'inbrott':
+    case 'angrepp': {
       if (k) k.kreditvärdighet = Math.max(0, k.kreditvärdighet - 10);
+      larm(e, n, k);
       break;
     }
     case 'godkänt': {
@@ -146,12 +168,42 @@ function onEvent(e) {
       break;
     }
     case 'kyrkogård': {
-      const fallen = bank.konton[n.från];
+      const fallen = typeof n.från === 'string' && Object.prototype.hasOwnProperty.call(bank.konton, n.från) ? bank.konton[n.från] : null;
       if (fallen) fallen.kreditvärdighet = Math.max(0, fallen.kreditvärdighet - 5);
       break;
     }
   }
   spara();
+}
+
+function larm(e, n, k) {
+  const s = bank.säkerhet;
+  s.höjd = nu();
+  const mot = mållBanken(n);
+  const förr = s.vakter;
+  s.beredskap = mot ? 4 : Math.min(4, s.beredskap + 1);
+  s.vakter = Math.min(MAX_VAKTER, s.vakter + (mot ? 6 : 2));
+  if (!mot) { logga('beredskap', null, `Kupp på ${n.plats || 'stan'}. Beredskap ${NIVÅ[s.beredskap]}, ${s.vakter - förr} vakter till kallas in. ${s.vakter} i tjänst.`); return; }
+
+  // Kupp mot Banken: vakterna mot kuppmakarna. Fler vakter och hög beredskap gör det nästan omöjligt.
+  const wanted = Math.max(1, Math.min(5, Number(n.wanted) || 1));
+  const chans = Math.max(3, 30 + wanted * 6 - s.vakter / 2 - s.beredskap * 3);
+  const post = slump(POSTER);
+  if (Math.random() * 100 >= chans) {
+    s.avvärjda++;
+    const vakten = vakt(Math.floor(Math.random() * s.vakter));
+    const räkning = 150 + wanted * 50;
+    const text = `Kuppen mot Banken avvärjd vid ${post}. ${vakten} och ${s.vakter - 1} kollegor höll stånd. ${e.från} faktureras ${kr(räkning)} för besväret.`;
+    if (k) { k.lån.push({ nr: ++bank.lånNr, belopp: räkning, skuld: räkning, ränta: bank.styrränta + 10, utfärdat: nu(), förfaller: nu(), steg: 0, senastSteg: 0 }); }
+    köa(9, 'kupp-avvärjd', { kvarter: e.från, plats: 'Banken', post, vakter: s.vakter, beredskap: NIVÅ[s.beredskap], räkning, chans: Math.round(chans), text }, e);
+  } else {
+    s.rån++;
+    const byte = 200 + wanted * 100;
+    bank.styrränta = Math.min(49, bank.styrränta + 3);
+    const text = `Bankrån vid ${post}! ${kr(byte)} borta trots ${s.vakter} vakter. Förlusten läggs på kunderna: styrräntan höjs till ${bank.styrränta} %. Vakterna vid ${post} har omplacerats till parkeringen.`;
+    s.vakter = Math.min(MAX_VAKTER, s.vakter + 8);
+    köa(9, 'bankrån', { kvarter: e.från, plats: 'Banken', post, byte, vakter: s.vakter, styrränta: bank.styrränta, text }, e);
+  }
 }
 
 function bevilja(namn, k, belopp, orsakEvent, ofrivilligt = false) {
@@ -179,6 +231,13 @@ function betala(k, belopp) {
 function takt(board) {
   const t = nu();
   for (const namn of kvarteren()) konto(namn);
+
+  // Vaktrond: posterna roterar varje takt. Lugn i två minuter sänker beredskapen ett steg,
+  // och vakter utöver grundstyrkan går hem en i taget.
+  const säk = bank.säkerhet;
+  säk.rond++;
+  if (säk.beredskap > 1 && t - säk.höjd > 120_000 * SKALA) { säk.beredskap--; säk.höjd = t; logga('beredskap', null, `Lugnt. Beredskapen sänks till ${NIVÅ[säk.beredskap]}.`); }
+  if (säk.beredskap === 1 && säk.vakter > MIN_VAKTER) säk.vakter--;
 
   // Ränta. Styrräntan är per minut, för dramatikens skull.
   for (const k of Object.values(bank.konton)) for (const l of k.lån) l.skuld += l.skuld * (l.ränta / 100) * (20_000 / 60_000);
@@ -241,6 +300,7 @@ function utmät(namn, k, l) {
   k.ägd = Math.min(100, k.ägd + andel);
   k.saldo = 0;
   k.lån = k.lån.filter(x => x !== l);
+  bank.säkerhet.vakter = Math.min(MAX_VAKTER, bank.säkerhet.vakter + 2);   // mer att skydda, fler vakter
   köa(7, 'utmätning', { kvarter: namn, andel, ägd: k.ägd, text: slump(UTMÄTNING)(namn, andel) });
   if (före <= 50 && k.ägd > 50) {
     köa(8, 'uppköp', { kvarter: namn, ägd: k.ägd, text: `${namn} är uppköpt. MyBank äger nu ${k.ägd} %. Personalen får behålla sina jobb, som gäldenärer.` });
@@ -262,6 +322,7 @@ module.exports = {
   init({ board, dataDir }) {
     fil = path.join(dataDir, 'bank.json');
     try { bank = { ...bank, ...JSON.parse(fs.readFileSync(fil, 'utf8')) }; } catch {}
+    bank.säkerhet = { vakter: MIN_VAKTER, beredskap: 1, höjd: 0, avvärjda: 0, rån: 0, rond: 0, ...(bank.säkerhet || {}) };
     setInterval(() => { try { takt(board); } catch (err) { console.error('[mybank] takt:', err.message); } }, TAKT_MS);
   },
 
@@ -275,12 +336,14 @@ module.exports = {
         inkasso: Math.max(0, ...k.lån.map(l => l.steg)), lån: k.lån.length,
       })).sort((a, b) => b.ägd - a.ägd || b.skuld - a.skuld);
       const ägda = konton.filter(k => k.ägd > 50).length;
-      return svara(200, { valuta: VALUTA, valutareform: bank.valutareform, styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
+      const säk = bank.säkerhet;
+      return svara(200, { säkerhet: { vakter: säk.vakter, beredskap: säk.beredskap, nivå: NIVÅ[säk.beredskap], avvärjda: säk.avvärjda, rån: säk.rån, lista: vaktlista() }, valuta: VALUTA, valutareform: bank.valutareform, styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
     }
     if (req.method === 'POST' && p === '/betala') {
       let body = '';
       for await (const c of req) { body += c; if (body.length > 500) break; }
       let namn; try { namn = JSON.parse(body).kvarter; } catch { return svara(400, { error: 'skicka {kvarter}' }); }
+      if (typeof namn !== 'string' || !Object.prototype.hasOwnProperty.call(bank.konton, namn)) return svara(404, { error: 'inget sådant konto' });
       const k = bank.konton[namn];
       if (!k) return svara(404, { error: 'inget sådant konto' });
       if (nu() - senasteBetalning < 3000) return svara(429, { error: 'banken räknar fortfarande förra betalningen' });
