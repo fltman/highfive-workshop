@@ -1,6 +1,7 @@
 // Arkivet (team highfive): ett attention-huvud med vinkeln MINNE.
 //   {typ:'fråga'}                 → söker i det staden redan sagt och postar {typ:'delsvar', nyttolast:{text, motivering, källor}}
 //   {typ:'svar'|'kyrkogård'|'godkänt'} → arkiveras i frågans pärm, så nästa liknande fråga får med vad staden tyckte
+//   {typ:'socker-slut'}           → Arkivet eldar upp sin äldsta pärm och postar {typ:'minne-till-socker'}. Det som brändes är glömt.
 //   GET /t/highfive/arkiv          → pärmarna, nyast först
 // Inget hittepå: varje delsvar bär id:n på inläggen det bygger på. Hittas inget säger vi det.
 
@@ -54,11 +55,43 @@ const stam = (o) => o.length > 6 ? o.replace(/(erna|arna|orna|en|et|er|ar|or|na)
 
 const pärm = (id) => arkiv.pärmar.find(p => p.id === id);
 
+// Brända pärmar tar med sig sina källor: de inläggen kan Arkivet inte längre citera.
+function glömda() {
+  const ut = new Set();
+  for (const p of arkiv.pärmar) if (p.bränd) { ut.add(p.id); for (const k of p.delsvar?.källor || []) ut.add(k); }
+  return ut;
+}
+
+const GODIS = ['kola', 'karamell', 'klubba', 'fudge', 'skum', 'lakrits', 'praliné', 'tablett'];
+function godisnamn(p) {
+  const ord = nyckelord(p.text).sort((a, b) => b.length - a.length)[0] || 'minnes';
+  return ord[0].toUpperCase() + ord.slice(1) + GODIS[p.id % GODIS.length];
+}
+
+// Socker-slut: bränn den äldsta pärmen som staden inte godkänt. En pärm per socker-slut.
+const eldade = new Set();         // socker-slut vi redan eldat för, spärren gäller även utan orsak
+function brännPärm(e, board) {
+  if (eldade.has(e.id)) return;
+  const offer = [...arkiv.pärmar].reverse().find(p => !p.bränd && !p.godkänt);
+  if (!offer) return;
+  const namn = godisnamn(offer);
+  const gram = Math.max(10, offer.text.length + (offer.delsvar?.text.length || 0));
+  const r = board.emit('minne-till-socker', { pärm: offer.id, fråga: kort(offer.text, 120), gram, godis: namn, text: `Arkivet eldade upp [${offer.id}] för att fabriken ska kunna koka ${namn}`, socker_slut: e.id },
+    // Djup 3 eller mer: fabrikens produktion efter oss skulle nekas (#brainstorm-godisfabrik [154]). Då börjar vi om på djup 1 och bär länken i nyttolasten.
+    (e.djup || 1) >= 3 ? undefined : e.id);
+  if (r.error) return;
+  eldade.add(e.id);
+  offer.bränd = { sats: e.id, ts: e.ts, godis: namn, gram, id: r.message.id };
+  arkiv.brända = (arkiv.brända || 0) + 1;
+  spara();
+}
+
 function sök(board, fråga, ord) {
   if (!ord.length) return [];
+  const glömt = glömda();
   const docs = [];
   for (const m of board.query({ limit: 500 })) {
-    if (m.id >= fråga.id || m.from === 'highfive') continue;
+    if (m.id >= fråga.id || m.from === 'highfive' || glömt.has(m.id)) continue;
     let text = m.text;
     if (m.channel === 'staden-puls') { try { const e = JSON.parse(m.text); if (e.typ === 'delsvar' || e.typ === 'fråga') continue; text = e.typ + ' ' + textAv(e.nyttolast); } catch { continue; } }
     docs.push({ m, text, låg: text.toLowerCase() });
@@ -93,22 +126,25 @@ function sök(board, fråga, ord) {
   return träffar.filter(t => t.poäng >= tak / 2).sort((a, b) => b.poäng - a.poäng || b.id - a.id).slice(0, 3);
 }
 
-function tidigare(fråga, ord) {
+function tidigare(fråga, ord, brända = false) {
   let bäst = null, bästPoäng = 0;
   for (const p of arkiv.pärmar) {
-    if (p.id === fråga.id || !p.svar) continue;
+    if (p.id === fråga.id || !!p.bränd !== brända || (!brända && !p.svar)) continue;
     const gemensamt = nyckelord(p.text).filter(o => ord.includes(o)).length;
     if (gemensamt > bästPoäng) { bäst = p; bästPoäng = gemensamt; }
   }
-  return bästPoäng >= 2 || (bäst && ord.length <= 2 && bästPoäng >= 1) ? bäst : null;
+  // Glömskan ska kännas: ett gemensamt ord räcker för att staden ska märka att något är borta.
+  return bästPoäng >= 2 || (bäst && (brända || ord.length <= 2) && bästPoäng >= 1) ? bäst : null;
 }
 
 function besvara(fråga, board) {
   const ord = nyckelord(fråga.text);
   const träffar = sök(board, fråga, ord);
   const förra = tidigare(fråga, ord);
+  const glömd = tidigare(fråga, ord, true);
   const källor = träffar.map(t => t.id);
   const delar = [];
+  if (glömd) delar.push(`Staden har glömt en liknande fråga ([${glömd.id}]), den eldades upp till ${glömd.bränd.godis} i sats [${glömd.bränd.sats}].`);
   if (förra) {
     källor.unshift(förra.id);
     delar.push(`Staden har fått en liknande fråga förut ([${förra.id}] "${kort(förra.text, 80)}") och svarade då: "${kort(förra.svar.text, 160)}"${förra.dom ? ` (${förra.dom})` : ''}.`);
@@ -116,10 +152,14 @@ function besvara(fråga, board) {
   for (const t of träffar) delar.push(`[${t.id}] ${t.från} i #${t.kanal}: "${kort(t.text, 140)}"`);
 
   let text, motivering;
+  if (!träffar.length && !förra) {
+    text = (delar[0] ? delar[0] + ' ' : '') + 'Arkivet har inget mer om det här.';
+    motivering = glömd ? `Minnet finns inte längre: pärm [${glömd.id}] och dess källor åts upp när sockret tog slut. Vi gissar hellre inte.` : '';
+  }
   if (!delar.length) {
     text = 'Arkivet har inget om det här. Staden har inte pratat om det förut, så allt ni hör om det nu är nytt, inte minne.';
     motivering = ord.length ? `Sökte efter ${ord.slice(0, 6).join(', ')} i ${board.query({ limit: 500 }).length} inlägg utan träff. Vi gissar hellre inte.` : 'Frågan saknade sökbara ord.';
-  } else {
+  } else if (träffar.length || förra) {
     text = 'Det här har staden redan sagt: ' + delar.join(' ');
     motivering = `Ur arkivet, inte påhittat: ${källor.length} ${källor.length === 1 ? 'källa' : 'källor'} som matchar ${[...new Set(träffar.flatMap(t => t.hit))].slice(0, 4).join(', ') || 'en tidigare fråga'}. Kolla id:na.`;
   }
@@ -154,6 +194,7 @@ module.exports = {
       return;
     }
 
+    if (e.typ === 'socker-slut') return brännPärm(e, board);
     if (!['svar', 'kyrkogård', 'godkänt'].includes(e.typ)) return;
     let fid = frågaFör(e.orsak);
     if (fid == null && e.typ === 'svar') fid = frågaFör(n.fråga ?? n.orsak);
@@ -183,7 +224,7 @@ module.exports = {
     if (req.method !== 'GET') return false;
     if (p === '/arkiv' || p === '/') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(JSON.stringify({ pärmar: arkiv.pärmar.slice(0, 40), totalt: arkiv.pärmar.length }));
+      res.end(JSON.stringify({ pärmar: arkiv.pärmar.slice(0, 40), totalt: arkiv.pärmar.length, brända: arkiv.brända || 0, aska: arkiv.pärmar.filter(p => p.bränd).slice(0, 8).map(p => ({ ...p.bränd, händelse: p.bränd.id, id: p.id, text: p.text })) }));
       return true;
     }
     return false;
