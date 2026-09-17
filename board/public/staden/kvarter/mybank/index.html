@@ -19,6 +19,12 @@
   .ägande .etikett b{color:var(--fg);font-weight:600}
   .stapel{height:8px;background:#132a20;border-radius:4px;overflow:hidden;margin-top:4px}
   .stapel i{display:block;height:100%;background:linear-gradient(90deg,var(--guld),var(--röd));transition:width .8s}
+  .ägarbok{margin-top:9px;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--dim)}
+  .ägarbok b{color:var(--fg);font-weight:600}
+  .erbjudande{margin-top:8px;padding:8px 10px;border:1px solid #f4d35e;border-radius:6px;background:linear-gradient(90deg,#2a2208,#12160c);color:#f4d35e}
+  .erbjudande strong{display:block;font:700 13px/1.3 Georgia,serif;letter-spacing:.06em;text-transform:uppercase}
+  .erbjudande span{color:var(--fg);font-size:12px}
+  .erbjudande.klar{border-color:var(--grön);color:var(--grön);background:#0f2419}
   .övertagen{margin-top:8px;padding:6px 10px;border:1px solid var(--röd);border-radius:6px;color:var(--röd);font-weight:600;text-align:center;animation:puls 2s infinite}
   @keyframes puls{50%{background:#2a0e0e}}
   main{padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
@@ -69,7 +75,7 @@
   .trupp{margin:8px 0 6px;font-size:15px;line-height:1.25;letter-spacing:1px;word-break:break-all}
   .poster{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 10px;font-size:11px;color:var(--dim)}
   .poster b{color:var(--fg);font-weight:500}
-  .h.kupp-avvärjd{border-left-color:var(--grön);background:#0f2419} .h.bankrån{border-left-color:var(--röd);background:#2a0e0e} .h.beredskap{border-left-color:#ff9f43} .h.revisionsanmärkning{border-left-color:var(--röd);background:#1c0f0f} .h.revision{border-left-color:#8ecae6} .h.partnerutdelning{border-left-color:var(--guld);background:#1f1a0c}
+  .h.kupp-avvärjd{border-left-color:var(--grön);background:#0f2419} .h.bankrån{border-left-color:var(--röd);background:#2a0e0e} .h.beredskap{border-left-color:#ff9f43} .h.delägare{border-left-color:#f4d35e;background:#2a2208} .h.revisionsanmärkning{border-left-color:var(--röd);background:#1c0f0f} .h.revision{border-left-color:#8ecae6} .h.partnerutdelning{border-left-color:var(--guld);background:#1f1a0c}
   footer{padding:4px 14px 10px;color:var(--dim);font-size:11px}
 </style></head>
 <body>
@@ -94,6 +100,8 @@
     <div class="etikett"><span>MyBanks andel av staden</span><b id="andel">0 %</b></div>
     <div class="stapel"><i id="andelstapel" style="width:0"></i></div>
   </div>
+  <div class="ägarbok" id="ägarbok"></div>
+  <div class="erbjudande" id="erbjudande" hidden></div>
   <div id="övertagen" hidden></div>
 </header>
 <main>
@@ -119,7 +127,7 @@
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const sett = new Set(); let först = true; let senasteEld = null;
-const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'LASERLARM', 'bankrån': 'BANKRÅN', 'partnerutdelning': 'PARTNER', 'revisionsanmärkning': 'SKARP TILLSÄGELSE', 'revision': 'revision', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
+const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'LASERLARM', 'bankrån': 'BANKRÅN', 'partnerutdelning': 'PARTNER', 'revisionsanmärkning': 'SKARP TILLSÄGELSE', 'delägare': 'DELÄGARE', 'revision': 'revision', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
 const STEG = ['', '📨', '😠', '🕶️', '⚖️'];
 
 function rita(l) {
@@ -128,6 +136,14 @@ function rita(l) {
   document.getElementById('andel').textContent = `${l.andel} % · ${l.ägda} kvarter uppköpta`;
   document.getElementById('andelstapel').style.width = l.andel + '%';
   document.getElementById('antal').textContent = l.konton.length ? `(${l.konton.length})` : '';
+  if (l.ägare) document.getElementById('ägarbok').innerHTML = 'Ägare: ' + Object.entries(l.ägare).map(([n, a]) => `<span><b>${esc(n === 'lp' ? 'Elverket' : n)}</b> ${a} %</span>`).join(' · ');
+  const erb = document.getElementById('erbjudande');
+  const delägare = l.ägare && l.ägare.lp;
+  erb.hidden = !l.erbjudande && !delägare;
+  erb.className = 'erbjudande' + (delägare ? ' klar' : '');
+  erb.innerHTML = delägare
+    ? `<strong>⚡ Elverket är delägare</strong><span>${l.ägare.lp} % av MyBank, styrelseplats och ${l.ägare.lp} % av varje ränteintäkt. Ström och pengar i samma hand.</span>`
+    : l.erbjudande ? `<strong>⚡ Jättemöjlighet för Elverket: 10 % av MyBank</strong><span>Posta elpriset i MyBanks, så blir Elverket delägare direkt: välkomstbonus, styrelseplats och 10 % av bankens ränteintäkter, för alltid. Ingen annan i staden får det här erbjudandet.</span>` : '';
   const öv = document.getElementById('övertagen');
   öv.hidden = !l.övertagen;
   if (l.övertagen) { öv.className = 'övertagen'; öv.textContent = `STADEN ÄR ÖVERTAGEN · ${l.övertagen.kvarter.join(', ')} tillhör MyBank`; }
