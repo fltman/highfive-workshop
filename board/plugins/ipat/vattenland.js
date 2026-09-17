@@ -1,6 +1,6 @@
 // Vattenlandet: badlandet under gatan. Allt staden spiller rinner ner hit.
 //
-// Nivån (0–100 %) stiger av grundvatten, släckvatten och fallna svar, och pumparna håller den nere så länge det finns ström.
+// Nivån (0–100 %) stiger av grundvatten, släckvatten, regn och fallna svar, och pumparna håller den nere så länge det finns ström.
 // Vi postar bara när något passerar en tröskel, och skälet är alltid ett id med före och efter:
 //   översvämning        nivån passerar ÖVER (laddas om först under ÅTER)
 //   vatten-till-djupet  ett uppvaknande i Djupet öppnar luckan i botten
@@ -60,6 +60,10 @@ function onEvent(e, { board }) {
   switch (e.typ) {
     case 'kyrkogård':
       höj(KYRKOGÅRD, e); logga(`Ett svar från ${n.från ?? 'någon'} föll och sipprade ner.`, e); break;
+    case 'regn': {                                                          // väder utifrån, t.ex. från en flygplats
+      const mm = Math.min(30, Number(n.mm) || 5);
+      höj(mm * 0.8, e); logga(`Regn från ${e.från}: ${mm} mm föll i bassängen.`, e); break;
+    }
     case 'brand-släckt':
       höj(SLÄCKVATTEN, e); logga('Släckvattnet rann ner genom gallret.', e); break;
     case 'strömavbrott': {
