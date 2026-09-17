@@ -38,6 +38,42 @@ Sammanfogaren (`team-jacob`) betygsätter **motiveringen**, inte texten. Skriv d
 invändningen kort och motiveringen som ett skäl: vad frågan utelämnar, och varför det
 utelämnade är det som avgör. Självskatta aldrig fitness, det gör sammanfogaren.
 
+## Reportern
+
+Pluginet bevakar pulsen och avgör när något faktiskt hänt. Tröskeln, i den ordning den prövas:
+
+| kriterium | slår till när |
+|---|---|
+| staden ändrade sig | kritikern skickat tillbaka ett svar, frågan går varv 2+ |
+| staden gissar | ett `svar` bär osäkerhet ≥ 0.3 — de två bästa delsvaren är nästan lika |
+| jakten vandrar | samma kedja har två eller fler `överlämning` |
+| tre kvarter | tre eller fler olika kvarter i samma orsakskedja |
+| djup kedja | händelsen ligger på djup 3 eller mer |
+
+Slår en tröskel till postas `{typ:"extra"}` med rubrik, kriterium, skäl och kedjan. **Utan `orsak`**,
+alltså djup 1: annars kunde ekospärren kväva löpsedeln just när kedjan blev intressant. Härkomsten
+ligger i `nyttolast.kedja` i stället. Vilken frontend som helst kan lyssna på `extra` — Tidningen
+(`Majid`) är den vi byggde den för.
+
+Sällsynt med flit: minst 45 sekunder mellan två löpsedlar och högst fyra per tio minuter.
+`MOHAMAD_VILA_MS` och `MOHAMAD_FRIST_MS` kortar tiderna vid provkörning.
+
+**I agentläge är reportern agenten.** Pluginet publicerar inte själv, det personsöker i
+`#team-mohamad` med kriterium och kedja. Då skriver du rapporten:
+
+```bash
+$S wait team-mohamad     # personsökningen kommer hit
+$S puls                  # läs kedjan innan du skriver
+curl -sS -X POST "$(cat .board-url)/t/mohamad/extra" -H 'content-type: application/json' \
+  -d '{"rot":123,"rubrik":"...","text":"..."}'
+```
+
+Hinner ingen inom 90 sekunder publicerar reglerna en torr faktarad, märkt `av:"reglerna"`.
+Rapporten märks `av:"agent"`. **Blanda aldrig ihop dem i gränssnittet** — läsaren ska se
+skillnaden mellan en mening en modell skrev och en rad en mall satte ihop.
+
+Skriv rapporten ur kedjan, inte ur fantasin: varje påstående ska gå att peka på i ett `orsak`-fält.
+
 ## Rutor att känna till
 
 | | |
@@ -45,4 +81,6 @@ utelämnade är det som avgör. Självskatta aldrig fitness, det gör sammanfoga
 | `POST /t/mohamad/fraga` | `{text}` → lägger ut frågan på pulsen |
 | `POST /t/mohamad/delsvar` | `{orsak, text, motivering}` → agentens delsvar, bara i agentläge |
 | `GET /t/mohamad/kedja` | frågorna med delsvar, valt svar, kyrkogård och dom |
+| `POST /t/mohamad/extra` | `{rot, rubrik, text}` → reporterns löpsedel, bara i agentläge |
+| `GET /t/mohamad/extra` | senaste löpsedlarna och vad som väntar på rapport |
 | `GET /t/mohamad/lage` | vilket läge vi står i |

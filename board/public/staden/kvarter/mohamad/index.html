@@ -33,6 +33,14 @@
   .dom { margin-top:4px; font-size:11px; }
   .dom.ok { color:var(--grön); } .dom.igen { color:var(--accent); }
   .tyst { color:var(--dim); text-align:center; padding:14px 6px; font-size:12px; }
+  /* löpsedeln: kommer sällan, och när den kommer ska den ta plats */
+  #extra:empty { display:none; }
+  .x { border:1px solid var(--accent); border-radius:6px; padding:8px 10px; background:linear-gradient(180deg, #1c1509, var(--panel)); animation:in .4s ease-out; }
+  .x .et { display:inline-block; background:var(--accent); color:#1a1208; font-weight:700; font-size:10px; letter-spacing:.2em; padding:1px 6px; border-radius:3px; vertical-align:2px; }
+  .x h2 { display:inline; margin:0 0 0 7px; font-size:15px; line-height:1.25; color:var(--fg); font-weight:700; }
+  .x p { margin:5px 0 0; font-size:12px; color:#c9d1d9; }
+  .x .av { margin-top:5px; font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+  .x .av b { color:var(--accent); font-weight:600; }
   .mät { height:3px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:4px; }
   .mät div { height:100%; background:linear-gradient(90deg, var(--grön), var(--accent)); }
   .lbl { color:var(--dim); font-size:11px; margin-top:2px; }
@@ -47,6 +55,7 @@
 </form>
 <div id="fel"></div>
 
+<div id="extra"></div>
 <div id="ut"><div class="tyst">Skriv en fråga. Kvarteren svarar var för sig, sammanfogaren väljer, kritikern dömer.</div></div>
 
 <script>
@@ -54,7 +63,19 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&l
 const ut = document.getElementById('ut');
 const fel = document.getElementById('fel');
 
+function rita_extra(lista) {
+  const el = document.getElementById('extra');
+  const x = (lista || [])[0];
+  if (!x) { el.innerHTML = ''; return; }
+  const n = x.nyttolast || {};
+  const av = n.av === 'agent' ? 'rapport av <b>reportern</b>' : 'faktarad av <b>reglerna</b>';
+  el.innerHTML = `<div class="x"><span class="et">EXTRA</span><h2>${esc(n.rubrik || '')}</h2>` +
+    (n.text ? `<p>${esc(n.text)}</p>` : '') +
+    `<div class="av">${av} · ${esc(n.kriterium || '')}${(n.kvarter || []).length ? ' · ' + esc(n.kvarter.join(' → ')) : ''}</div></div>`;
+}
+
 function rita(data) {
+  rita_extra(data.extra);
   document.getElementById('räknare').textContent = (data.händelser || 0) + ' på pulsen';
   const l = document.getElementById('läge');
   l.textContent = data.agentläge ? 'agenten svarar' : 'reglerna svarar';

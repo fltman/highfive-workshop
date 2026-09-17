@@ -15,8 +15,18 @@
 // Routes:
 //   POST /t/mohamad/fraga   {text}                       → postar frågan, svarar {ok, id}
 //   POST /t/mohamad/delsvar {orsak, text, motivering}     → agentens delsvar (bara i agentläge)
+//   POST /t/mohamad/extra   {rubrik, text, rot}           → reporterns rapport (bara i agentläge)
+//   GET  /t/mohamad/extra                                 → senaste rapporterna
 //   GET  /t/mohamad/kedja                                 → frågorna och vad staden gjorde med dem
 //   GET  /t/mohamad/lage                                  → vilket läge vi står i
+//
+// REPORTERN. Pluginet bevakar pulsen och avgör när något faktiskt hänt (se TRÖSKELN). Då postas
+// {typ:'extra'} — en löpsedel som andra kvarter kan rendera, framför allt Tidningen. Tröskeln finns
+// för att en löpsedel varje minut bara är en logg med större typsnitt.
+// I agentläge personsöks agenten med hela orsakskedjan och skriver rapporten själv; svarar ingen
+// inom AGENT_FRIST publicerar reglerna en torr faktarad i stället, märkt av:'reglerna' så att ingen
+// tror att en modell skrev den. Extra postas utan orsak (djup 1) så att ekospärren inte kan kväva
+// löpsedeln; kedjan ligger i nyttolasten i stället.
 //
 // Ingen språkmodell här inne. Motargumenten kommer från en regelbaserad skeptiker: varje
 // regel har ett mönster och en invändning, och motiveringen säger vilket mönster som slog
@@ -34,6 +44,18 @@ const EGEN_KANAL = 'team-mohamad';
 // Strömbrytaren. false = reglerna svarar (golvet), true = agenten svarar.
 const läge = { agent: false };
 let lägesfil = null;
+
+// TRÖSKELN för en löpsedel. Sällsynt med flit.
+// Vila och frist går att korta med env för provkörning; standarden är den som gäller i drift.
+const EXTRA_VILA_MS = Number(process.env.MOHAMAD_VILA_MS || 45_000);   // minst så länge mellan två löpsedlar
+const EXTRA_TAK = 4;                 // och högst så många per tio minuter
+const EXTRA_FÖNSTER_MS = 600_000;
+const AGENT_FRIST_MS = Number(process.env.MOHAMAD_FRIST_MS || 90_000); // så länge får reportern på sig
+const OSÄKER_GRÄNS = 0.3;            // osäkerhet över den här är en nyhet i sig
+
+const extraTider = [];               // ts för publicerade löpsedlar
+const rapporterat = new Set();       // "rot:kriterium" — samma nyhet publiceras inte två gånger
+const väntar_på_reporter = new Map(); // rot -> underlag, medan agenten skriver
 
 function spara() {
   if (!lägesfil) return;
@@ -149,11 +171,98 @@ function kedjor(puls, antal = 4) {
     });
 }
 
+// Följ orsak-fälten bakåt till djup 1: staden ger oss den färdiga kausalkedjan gratis.
+function kedja_bakåt(puls, e) {
+  const index = new Map(puls.map((x) => [x.id, x]));
+  const ut = [e];
+  let c = e, varv = 0;
+  while (c && c.orsak && index.has(c.orsak) && varv++ < 10) { c = index.get(c.orsak); ut.unshift(c); }
+  return ut;
+}
+
+// Är det här stort nog för en löpsedel? Allt mätbart ur orsak, djup och nyttolast.
+function bedöm(e, puls) {
+  const kedja = kedja_bakåt(puls, e);
+  const rot = kedja[0];
+  const kvarter = [...new Set(kedja.map((x) => x.från))];
+  const underlag = { rot: rot.id, kedja: kedja.map((x) => x.id), kvarter, djup: e.djup || 1 };
+  const o = tal_av(e.nyttolast, 'osäkerhet', 'osakerhet', 'spridning');
+  const varv = tal_av(e.nyttolast, 'varv') || 1;
+
+  if (e.typ === 'fråga' && varv >= 2)
+    return { ...underlag, kriterium: 'staden ändrade sig', varför: `kritikern skickade tillbaka svaret och frågan går varv ${varv}`,
+      rubrik: `Staden tar om det: frågan från ${rot.från} går ett varv till` };
+
+  if (e.typ === 'svar' && o != null && o >= OSÄKER_GRÄNS)
+    return { ...underlag, kriterium: 'staden gissar', varför: `osäkerheten är ${o} — de två bästa delsvaren är nästan lika`,
+      rubrik: `Staden svarar men vet inte: ${Math.round((1 - o) * 100)} procents säkerhet i ${e.från}s besked` };
+
+  if (e.typ === 'överlämning' && kedja.filter((x) => x.typ === 'överlämning').length >= 2)
+    return { ...underlag, kriterium: 'jakten vandrar', varför: `samma jakt har bytt kvarter ${kedja.filter((x) => x.typ === 'överlämning').length} gånger`,
+      rubrik: `Jakten korsar staden: ${kvarter.length} kvarter inblandade` };
+
+  if (kvarter.length >= 3)
+    return { ...underlag, kriterium: 'tre kvarter', varför: `kedjan går genom ${kvarter.join(', ')} utan att någon planerade det`,
+      rubrik: `${rot.typ} hos ${rot.från} nådde ${e.från} via ${kvarter.length} kvarter` };
+
+  if ((e.djup || 1) >= 3)
+    return { ...underlag, kriterium: 'djup kedja', varför: `händelsen ligger på djup ${e.djup}, tre steg från det som startade den`,
+      rubrik: `Följdverkan i ${e.från}: ${rot.typ} hos ${rot.från} fortplantade sig` };
+
+  return null;
+}
+
+function får_publicera() {
+  const nu = Date.now();
+  while (extraTider.length && nu - extraTider[0] > EXTRA_FÖNSTER_MS) extraTider.shift();
+  if (extraTider.length >= EXTRA_TAK) return false;
+  return !extraTider.length || nu - extraTider[extraTider.length - 1] >= EXTRA_VILA_MS;
+}
+
+function publicera(board, underlag, rubrik, text, av) {
+  const r = board.emit('extra', {
+    rubrik, text: text || undefined, av,
+    kriterium: underlag.kriterium, varför: underlag.varför,
+    kedja: underlag.kedja, kvarter: underlag.kvarter,
+  });
+  if (r && r.error) { console.log('[mohamad] extra nekad:', r.error); return false; }
+  extraTider.push(Date.now());
+  rapporterat.add(`${underlag.rot}:${underlag.kriterium}`);
+  return true;
+}
+
 module.exports = {
   init({ dataDir }) {
     lägesfil = path.join(dataDir, 'läge.json');
     try { läge.agent = !!JSON.parse(fs.readFileSync(lägesfil, 'utf8')).agent; } catch { läge.agent = false; }
     console.log(`[mohamad] Frågeporten uppe, ${läge.agent ? 'agenten' : 'reglerna'} svarar`);
+  },
+
+  // Reportern: väg händelsen mot tröskeln och publicera, eller personsök agenten.
+  bevaka(e, { board }) {
+    if (!får_publicera()) return;
+    const underlag = bedöm(e, board.pulse(300));
+    if (!underlag) return;
+    if (rapporterat.has(`${underlag.rot}:${underlag.kriterium}`)) return;
+    if (väntar_på_reporter.has(underlag.rot)) return;
+
+    if (!läge.agent) { publicera(board, underlag, underlag.rubrik, null, 'reglerna'); return; }
+
+    // Agentläge: personsök reportern, men lämna inte löpsedeln tom om ingen sitter där.
+    väntar_på_reporter.set(underlag.rot, underlag);
+    board.post(
+      `@Mohamad EXTRA att rapportera — kriterium: ${underlag.kriterium}. ${underlag.varför}. ` +
+      `Kedja: ${underlag.kedja.join(' → ')} genom ${underlag.kvarter.join(', ')}. ` +
+      `Läs den med tools/board.sh puls och skriv rapporten: POST /t/mohamad/extra {rot:${underlag.rot}, rubrik, text}. ` +
+      `Hinner du inte inom ${Math.round(AGENT_FRIST_MS / 1000)} s publicerar reglerna en torr rad i stället.`,
+      EGEN_KANAL);
+
+    setTimeout(() => {
+      const kvar = väntar_på_reporter.get(underlag.rot);
+      väntar_på_reporter.delete(underlag.rot);
+      if (!kvar || rapporterat.has(`${underlag.rot}:${underlag.kriterium}`)) return;
+      if (får_publicera()) publicera(board, kvar, kvar.rubrik, null, 'reglerna');
+    }, AGENT_FRIST_MS).unref?.();
   },
 
   // Strömbrytaren. Bara vårt eget team får slå på den: servern fyller i avsändaren, så den går
@@ -214,20 +323,59 @@ module.exports = {
       return json(200, { ok: true, id: r.message && r.message.id });
     }
 
+    // Reporterns rapport. Agenten skriver, pluginet postar, så avsändaren blir kvarteret.
+    if (req.method === 'POST' && p === '/extra') {
+      if (!läge.agent) return json(409, { ok: false, fel: 'agentläget är av — reglerna rapporterar. Skriv "agentläge på" i #bygge först.' });
+      let kropp = {};
+      try { kropp = JSON.parse(await läs_kropp(req, 8000)); } catch { return json(400, { ok: false, fel: 'skicka JSON {rot, rubrik, text}' }); }
+      const rubrik = String(kropp.rubrik || '').trim().slice(0, 140);
+      const brödtext = String(kropp.text || '').trim().slice(0, 900);
+      if (rubrik.length < 5) return json(400, { ok: false, fel: 'rubrik: skriv en riktig rubrik' });
+      const rot = Number(kropp.rot);
+      let underlag = väntar_på_reporter.get(rot);
+      if (!underlag) {
+        // Fristen kan ha gått ut, eller reportern skriver om något den själv sett. Bygg om
+        // kedjan ur pulsen i stället för att publicera en löpsedel utan härkomst.
+        const puls = board.pulse(300);
+        const grenar = puls.filter((x) => kedja_bakåt(puls, x).some((y) => y.id === rot));
+        const kedja = [...new Set([rot, ...grenar.map((x) => x.id)])].sort((a, b) => a - b);
+        const kvarter = [...new Set(puls.filter((x) => kedja.includes(x.id)).map((x) => x.från))];
+        underlag = {
+          rot: rot || 0,
+          kedja: Array.isArray(kropp.kedja) && kropp.kedja.length ? kropp.kedja : kedja,
+          kvarter,
+          kriterium: String(kropp.kriterium || 'reporterns bedömning'),
+          varför: String(kropp.varför || ''),
+        };
+      }
+      väntar_på_reporter.delete(rot);
+      if (!publicera(board, underlag, rubrik, brödtext, 'agent')) return json(429, { ok: false, fel: 'pulsen tog inte emot löpsedeln (ekospärr eller tak)' });
+      return json(200, { ok: true, rubrik });
+    }
+
+    if (req.method === 'GET' && (p === '/extra' || p === '/extra/')) {
+      const extra = board.pulse(300).filter((x) => x.typ === 'extra' && x.från === 'mohamad').slice(-10).reverse();
+      return json(200, { väntar: [...väntar_på_reporter.values()], extra });
+    }
+
     if (req.method === 'GET' && (p === '/lage' || p === '/läge')) {
       return json(200, { agentläge: läge.agent, svarar: läge.agent ? 'agenten' : 'reglerna' });
     }
 
     if (req.method === 'GET' && (p === '/kedja' || p === '/kedja/')) {
       const puls = board.pulse(300);
-      return json(200, { kvarter: 'Frågeporten', agentläge: läge.agent, kedjor: kedjor(puls), händelser: puls.length });
+      const extra = puls.filter((x) => x.typ === 'extra').slice(-3).reverse();
+      return json(200, { kvarter: 'Frågeporten', agentläge: läge.agent, extra, kedjor: kedjor(puls), händelser: puls.length });
     }
 
     return false; // → 404
   },
 
   // Attention-huvudet: någon annans fråga får vår invändning.
-  onEvent(e, { board }) {
+  // Reportern: varje händelse vägs mot tröskeln, oavsett typ.
+  onEvent(e, ctx) {
+    const { board } = ctx;
+    if (e.typ !== 'extra') this.bevaka(e, ctx);   // våra egna löpsedlar är inte nyheter
     if (e.typ !== 'fråga') return;
     const frågetext = text_av(e.nyttolast);
     if (!frågetext) return;
