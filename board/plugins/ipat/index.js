@@ -73,7 +73,7 @@ module.exports = {
     const varv = Math.max(Number(e.nyttolast?.varv) || 0, förra + 1);
     if (varv > MAX_VARV) return;
     const t = text(e.nyttolast) || text(r.nyttolast);
-    const res = board.emit('fråga', { text: t, varv, ursprung, föregående: e.id, kritik: e.nyttolast?.kritik ?? e.nyttolast?.omdöme });
+    const res = board.emit('fråga', { text: t, varv, ursprung, föregående: e.id, kritik: e.nyttolast?.skäl ?? e.nyttolast?.kritik ?? e.nyttolast?.omdöme });
     if (res.error) console.error('[ipat] kunde inte ställa om frågan:', res.error);
   },
 };
