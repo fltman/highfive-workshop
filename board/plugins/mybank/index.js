@@ -13,9 +13,9 @@
 // kronor, krediter och stadsmynt växlas 1:1 mot MyBanks, med 3 % växlingsavgift till banken.
 //
 // SÄKERHET: en vaktstyrka på minst 24 namngivna vakter på fasta poster, beredskap i fyra nivåer.
-//   Varje kupp i staden höjer beredskapen och ger förstärkning. En kupp mot Banken (plats) prövas mot
-//   vakterna: avvärjs den postas {typ:'kupp-avvärjd'} och kuppmakaren får en räkning, lyckas den postas
-//   {typ:'bankrån'} och kunderna får betala via styrräntan. Beredskapen sjunker ett steg per två minuter lugn.
+//   Varje kupp i staden höjer beredskapen och ger förstärkning. Banken skyddas av ett lasernät: en kupp,
+//   ett rån, ett inbrott eller ett angrepp mot Banken (plats) utlöser lasertornen direkt och slutar alltid
+//   i {typ:'kupp-avvärjd', försvar:'laser'}. Bankrån är omöjliga. Beredskapen sjunker ett steg per två minuters lugn.
 //
 // VALUTAPARTNER: ett kvarter som postar belopp i MyBanks (nyttolast.mybanks eller valuta:'MyBanks')
 //   blir partner. Det får en engångsbonus på 10 % av bankens vinst (minst 100 MB) och sedan 2 % av
@@ -192,25 +192,21 @@ function larm(e, n, k) {
   s.vakter = Math.min(MAX_VAKTER, s.vakter + (mot ? 6 : 2));
   if (!mot) { logga('beredskap', null, `Kupp på ${n.plats || 'stan'}. Beredskap ${NIVÅ[s.beredskap]}, ${s.vakter - förr} vakter till kallas in. ${s.vakter} i tjänst.`); return; }
 
-  // Kupp mot Banken: vakterna mot kuppmakarna. Fler vakter och hög beredskap gör det nästan omöjligt.
+  // Kupp mot Banken: lasernätet. Det finns ingen chans till rån. Bryts en stråle avfyrar lasertornen direkt,
+  // kuppmakarna oskadliggörs och grips av vakterna, och kvarteret bakom kuppen får fakturan.
   const wanted = Math.max(1, Math.min(5, Number(n.wanted) || 1));
-  const chans = Math.max(3, 30 + wanted * 6 - s.vakter / 2 - s.beredskap * 3);
   const post = slump(POSTER);
-  if (Math.random() * 100 >= chans) {
-    s.avvärjda++;
-    const vakten = vakt(Math.floor(Math.random() * s.vakter));
-    const räkning = 150 + wanted * 50;
-    const text = `Kuppen mot Banken avvärjd vid ${post}. ${vakten} och ${s.vakter - 1} kollegor höll stånd. ${e.från} faktureras ${kr(räkning)} för besväret.`;
-    if (k) { k.lån.push({ nr: ++bank.lånNr, belopp: räkning, skuld: räkning, ränta: bank.styrränta + 10, utfärdat: nu(), förfaller: nu(), steg: 0, senastSteg: 0 }); }
-    köa(9, 'kupp-avvärjd', { kvarter: e.från, plats: 'Banken', post, vakter: s.vakter, beredskap: NIVÅ[s.beredskap], räkning, chans: Math.round(chans), text }, e);
-  } else {
-    s.rån++;
-    const byte = 200 + wanted * 100;
-    bank.styrränta = Math.min(49, bank.styrränta + 3);
-    const text = `Bankrån vid ${post}! ${kr(byte)} borta trots ${s.vakter} vakter. Förlusten läggs på kunderna: styrräntan höjs till ${bank.styrränta} %. Vakterna vid ${post} har omplacerats till parkeringen.`;
-    s.vakter = Math.min(MAX_VAKTER, s.vakter + 8);
-    köa(9, 'bankrån', { kvarter: e.från, plats: 'Banken', post, byte, vakter: s.vakter, styrränta: bank.styrränta, text }, e);
-  }
+  const torn = 4 + wanted * 2;
+  const skott = torn * (2 + Math.floor(Math.random() * 3));
+  const förare = typeof n.förare === 'string' ? n.förare.slice(0, 30) : 'kuppmakarna';
+  s.avvärjda++;
+  s.laserskott = (s.laserskott || 0) + skott;
+  s.senasteLaser = { ts: nu(), post, skott };
+  const vakten = vakt(Math.floor(Math.random() * s.vakter));
+  const räkning = 150 + wanted * 50 + skott * 5;
+  const text = `LASERLARM vid ${post}. Strålen bröts och ${torn} lasertorn avlossade ${skott} skott direkt. ${förare} ligger oskadliggjorda på golvet, och ${vakten} sätter på handbojorna. Inget försvann. ${e.från} faktureras ${kr(räkning)}, laserladdningen ingår.`;
+  if (k) { k.lån.push({ nr: ++bank.lånNr, belopp: räkning, skuld: räkning, ränta: bank.styrränta + 10, utfärdat: nu(), förfaller: nu(), steg: 0, senastSteg: 0 }); }
+  köa(9, 'kupp-avvärjd', { kvarter: e.från, plats: 'Banken', post, försvar: 'laser', torn, skott, gripna: förare, vakter: s.vakter, beredskap: NIVÅ[s.beredskap], räkning, text }, e);
 }
 
 function välkomnaPartner(namn, k, e) {
@@ -362,7 +358,7 @@ module.exports = {
       })).sort((a, b) => b.ägd - a.ägd || b.skuld - a.skuld);
       const ägda = konton.filter(k => k.ägd > 50).length;
       const säk = bank.säkerhet;
-      return svara(200, { säkerhet: { vakter: säk.vakter, beredskap: säk.beredskap, nivå: NIVÅ[säk.beredskap], avvärjda: säk.avvärjda, rån: säk.rån, lista: vaktlista() }, valuta: VALUTA, valutareform: bank.valutareform, vinst: Math.round(bank.vinst || 0), styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
+      return svara(200, { säkerhet: { vakter: säk.vakter, beredskap: säk.beredskap, nivå: NIVÅ[säk.beredskap], avvärjda: säk.avvärjda, rån: säk.rån, laser: 'aktivt', laserskott: säk.laserskott || 0, senasteLaser: säk.senasteLaser || null, lista: vaktlista() }, valuta: VALUTA, valutareform: bank.valutareform, vinst: Math.round(bank.vinst || 0), styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
     }
     if (req.method === 'POST' && p === '/betala') {
       let body = '';

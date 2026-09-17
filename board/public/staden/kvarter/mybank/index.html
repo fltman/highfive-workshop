@@ -49,6 +49,15 @@
   .nivå.grön{color:var(--grön)} .nivå.gul{color:#f4d35e} .nivå.orange{color:#ff9f43} .nivå.röd{color:var(--röd);animation:puls 1s infinite}
   .säk .antal{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums} .säk .antal small{font-size:11px;font-weight:400;color:var(--dim)}
   .säk .stat{margin-left:auto;color:var(--dim);font-size:12px}
+  /* Lasernätet: röda strålar som sveper över valvet, och blixtrar när tornen avfyrar. */
+  .laser{position:relative;height:46px;margin:8px 0 4px;border:1px solid #3a1414;border-radius:6px;overflow:hidden;background:#0a0606}
+  .laser i{position:absolute;left:-10%;width:120%;height:1px;background:#ff2d2d;box-shadow:0 0 6px #ff2d2d,0 0 2px #fff;opacity:.85;animation:svep 3.2s ease-in-out infinite alternate}
+  .laser i:nth-child(1){top:8px;transform:rotate(4deg)} .laser i:nth-child(2){top:18px;transform:rotate(-6deg);animation-delay:-.8s}
+  .laser i:nth-child(3){top:28px;transform:rotate(3deg);animation-delay:-1.6s} .laser i:nth-child(4){top:38px;transform:rotate(-3deg);animation-delay:-2.4s}
+  @keyframes svep{from{translate:0 -4px}to{translate:0 4px}}
+  .laser b{position:absolute;right:8px;bottom:5px;font-size:10px;letter-spacing:.14em;color:#ff6b6b;background:#0a0606cc;padding:1px 5px}
+  .laser.eld{animation:eld .12s steps(2) 10}
+  @keyframes eld{50%{background:#ff2d2d55}}
   .trupp{margin:8px 0 6px;font-size:15px;line-height:1.25;letter-spacing:1px;word-break:break-all}
   .poster{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 10px;font-size:11px;color:var(--dim)}
   .poster b{color:var(--fg);font-weight:500}
@@ -83,6 +92,7 @@
   <section><h2>Säkerhetsavdelningen</h2>
     <div class="säk">
       <div class="topp"><span class="nivå grön" id="nivå">beredskap grön</span><span class="antal" id="vakter">– <small>vakter i tjänst</small></span><span class="stat" id="säkstat"></span></div>
+      <div class="laser" id="laser" aria-label="Lasernät aktivt"><i></i><i></i><i></i><i></i><b id="laserinfo">LASERNÄT AKTIVT</b></div>
       <div class="trupp" id="trupp" aria-hidden="true"></div>
       <div class="poster" id="poster"></div>
     </div>
@@ -93,8 +103,8 @@
 <footer>Betala av ett kvarters skuld för att bromsa övertagandet. Stadens valuta är MyBanks. Alla belopp är påhittade.</footer>
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const sett = new Set(); let först = true;
-const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'AVVÄRJD', 'bankrån': 'BANKRÅN', 'partnerutdelning': 'PARTNER', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
+const sett = new Set(); let först = true; let senasteEld = null;
+const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'LASERLARM', 'bankrån': 'BANKRÅN', 'partnerutdelning': 'PARTNER', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
 const STEG = ['', '📨', '😠', '🕶️', '⚖️'];
 
 function rita(l) {
@@ -111,7 +121,12 @@ function rita(l) {
   if (s) {
     const nv = document.getElementById('nivå'); nv.className = 'nivå ' + s.nivå; nv.textContent = 'beredskap ' + s.nivå;
     document.getElementById('vakter').innerHTML = `${s.vakter} <small>vakter i tjänst</small>`;
-    document.getElementById('säkstat').textContent = `${s.avvärjda} kupper avvärjda · ${s.rån} rån`;
+    document.getElementById('säkstat').textContent = `${s.avvärjda} kupper stoppade · ${s.laserskott || 0} laserskott · 0 rån möjliga`;
+    document.getElementById('laserinfo').textContent = s.senasteLaser ? `LASERNÄT AKTIVT · senast ${s.senasteLaser.skott} skott vid ${s.senasteLaser.post}` : 'LASERNÄT AKTIVT';
+    if (s.senasteLaser && s.senasteLaser.ts !== senasteEld) {
+      if (senasteEld !== null) { const la = document.getElementById('laser'); la.classList.remove('eld'); void la.offsetWidth; la.classList.add('eld'); }
+      senasteEld = s.senasteLaser.ts;
+    } else if (senasteEld === null) senasteEld = s.senasteLaser ? s.senasteLaser.ts : 0;
     document.getElementById('trupp').textContent = '💂'.repeat(s.vakter);
     // En rad per post med vakterna som står där just nu (posterna roterar varje takt).
     const perPost = {}; for (const v of s.lista) (perPost[v.post] ||= []).push(v.namn.replace('Vakt ', ''));
