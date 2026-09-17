@@ -46,7 +46,13 @@
   #snurra { background: linear-gradient(180deg, var(--guld), #e0a93a); color: #241a00; border: 0; border-radius: 12px; padding: 14px 22px; font-size: 17px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 0 #a97e1f; }
   #snurra:active { transform: translateY(2px); box-shadow: 0 2px 0 #a97e1f; }
   .jack { font-size: 14px; color: var(--guld); font-weight: 800; text-shadow: 0 0 10px rgba(255,207,90,.5); }
-  #kasinoMsg { font-size: 14px; color: var(--text); min-height: 18px; margin-top: 8px; }
+  #kasinoMsg, #rulettMsg { font-size: 14px; color: var(--text); min-height: 18px; margin-top: 8px; }
+  .rbtn.röd { border-color: #a33; } .rbtn.svart { border-color: #667; } .rbtn.grön { border-color: #2a7a4a; color: var(--ok); }
+  #rNum { font-size: 28px; font-weight: 800; color: var(--dim); }
+  #rNum.röd { color: #ff5a5a; } #rNum.svart { color: #cfd3dd; } #rNum.grön { color: var(--ok); }
+  ol.topp { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 3px; }
+  ol.topp li { font-size: 13px; color: var(--guld); }
+  ol.topp li.tom { color: var(--dim); list-style: none; margin-left: -18px; }
   .form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
   select, input { background: #120f1a; color: var(--text); border: 1px solid #322a44; border-radius: 8px; padding: 7px 9px; font-size: 14px; }
   input { width: 130px; }
@@ -110,6 +116,26 @@
     <div id="kasinoMsg">Snurra för att spela! Tre 🚔 = razzia.</div>
   </fieldset>
 
+  <!-- Roulette -->
+  <fieldset class="casino">
+    <legend>🎡 Roulette</legend>
+    <div class="slots">
+      <div class="hjul"><span id="rNum">–</span></div>
+      <div class="val">
+        <button class="rbtn röd" data-farg="röd">Röd 2x</button>
+        <button class="rbtn svart" data-farg="svart">Svart 2x</button>
+        <button class="rbtn grön" data-farg="grön">Grön 14x</button>
+      </div>
+    </div>
+    <div id="rulettMsg">Satsa på en färg och snurra hjulet.</div>
+  </fieldset>
+
+  <!-- Topplista -->
+  <fieldset>
+    <legend>🏆 Största vinster</legend>
+    <ol id="topp" class="topp"><li class="tom">Inga vinster än — spela!</li></ol>
+  </fieldset>
+
   <!-- Sätt igång en kupp: utlöser jakten (och kedjereaktioner i staden) -->
   <fieldset>
     <legend>💥 Sätt igång en kupp</legend>
@@ -153,7 +179,7 @@
   const bas = '/t/willebus';
   const ikon = { in:'↘', ut:'↗', kupp:'💥', gripen:'🚔', slut:'·', patrull:'👮', delsvar:'💬', mörker:'🌑', brist:'🍬', larm:'🚨', dom:'⚖️', natt:'🌃', storlarm:'📢', kasino:'🎰', out:'·' };
   const HJUL = ['🍒','🚗','💰','💎','🚔','🍀'];
-  let platserFyllda = false, sistaTid = null, sirenPå = false, spinnar = false;
+  let platserFyllda = false, sistaTid = null, sirenPå = false, spinnar = false, rulettSpinnar = false;
 
   let actx, osc, gain, sirenTimer;
   function sirenStart() {
@@ -237,6 +263,18 @@
     document.getElementById('jack').textContent = 'Jackpot: ' + (k.jackpot || 0) + ' marker';
     document.getElementById('kasinoMsg').textContent = (k.meddelande || '') + (k.senasteVinst ? '  (+' + k.senasteVinst + ' marker)' : '');
 
+    // Roulette
+    const rl = s.rulett || {};
+    if (!rulettSpinnar && rl.senasteNummer !== null && rl.senasteNummer !== undefined) {
+      const rn = document.getElementById('rNum'); rn.textContent = rl.senasteNummer; rn.className = rl.senasteFärg || '';
+    }
+    document.getElementById('rulettMsg').textContent = rl.meddelande || '';
+
+    // Topplista
+    if (s.topp && s.topp.length) {
+      document.getElementById('topp').innerHTML = s.topp.map(t => '<li>' + t.belopp + ' marker — ' + t.spel + '</li>').join('');
+    }
+
     document.getElementById('status').innerHTML = s.harJakt
       ? '🚨 Razzia! <b>' + (s.förare || 'okänd') + '</b> flyr — grip, styr eller vadslå!'
       : (w > 0 ? 'Läget svalnar…' : 'Kasinot är öppet. Snurra banditen eller sätt igång en kupp!');
@@ -272,6 +310,20 @@
       tick();
     }, 700);
   };
+
+  document.querySelectorAll('.rbtn').forEach(b => b.onclick = async () => {
+    if (rulettSpinnar) return; rulettSpinnar = true;
+    const rn = document.getElementById('rNum'); rn.classList.add('spin');
+    const anim = setInterval(() => { rn.textContent = Math.floor(Math.random() * 37); rn.className = 'spin'; }, 80);
+    try { await fetch(bas + '/rulett', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ färg: b.dataset.farg }) }); } catch {}
+    setTimeout(async () => {
+      clearInterval(anim); rulettSpinnar = false;
+      let s; try { s = await (await fetch(bas + '/state')).json(); } catch { return; }
+      const rl = s.rulett || {}; rn.textContent = rl.senasteNummer; rn.className = rl.senasteFärg || '';
+      if (rl.senasteVinst) { flash('guld'); if (rl.senasteVinst >= 50) konfetti(['💰','🪙','⭐','💎']); }
+      tick();
+    }, 700);
+  });
 
   document.getElementById('ljud').onclick = () => {
     sirenPå = !sirenPå;
