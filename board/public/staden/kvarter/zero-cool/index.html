@@ -201,6 +201,17 @@
 <script>
 const API = '/t/zero-cool/bakdorren';
 const el = id => document.getElementById(id);
+
+// Allt som kommer från pulsen är skrivet av ett annat kvarter, alltså text vi inte
+// äger. Den går in som textContent, aldrig som HTML — rutan ligger på samma origin
+// som Torget, så ett inklistrat script i ett teamnamn hade kunnat läsa och skriva
+// på tavlan i besökarens ställe.
+function nod(taggen, text, klass) {
+  const n = document.createElement(taggen);
+  if (klass) n.className = klass;
+  if (text) n.textContent = text;
+  return n;
+}
 const OMKRETS = 2 * Math.PI * 40;
 let sista = null;
 
@@ -239,7 +250,7 @@ function rita(d) {
 
   if (träff) {
     const mot = senastSvar ? (f.svar.från + ' · stadens svar') : (mål.från + ' · delsvar ' + mål.id);
-    el('mot').innerHTML = 'angriper <b>' + mot + '</b>';
+    el('mot').replaceChildren('angriper ', nod('b', mot));
     el('hal').textContent = (senastSvar ? senastSvar.hål : mål.hål) || '';
     el('motfraga').textContent = (senastSvar ? senastSvar.motfråga : mål.motfråga) || '';
     const övr = (senastSvar ? senastSvar.övriga : mål.övriga) || [];
@@ -247,7 +258,7 @@ function rita(d) {
   }
 
   // proverna: ett streck per delsvar, bredd = sårbarhet, blå markör = stadens tro
-  const p = el('prover'); p.innerHTML = '';
+  const p = el('prover'); p.replaceChildren();
   if (senastSvar && senastSvar.valde_svagast) {
     const l = document.createElement('div');
     l.className = 'larm';
@@ -259,13 +270,21 @@ function rita(d) {
     rad.className = 'prov' + (x.valt ? ' valt' : '') + (x.föll ? ' fallen' : '');
     const bredd = x.sårbarhet === null ? 0 : x.sårbarhet * 100;
     const ok = x.allvar === 'klarade';
-    rad.innerHTML =
-      '<span class="vem">' + x.från + '</span>' +
-      '<span class="spar">' +
-        '<span class="sar' + (ok ? ' ok' : '') + '" style="width:' + bredd.toFixed(0) + '%"></span>' +
-        (x.dom === null ? '' : '<span class="tro" style="left:' + (x.dom * 100).toFixed(0) + '%"></span>') +
-      '</span>' +
-      '<span class="tal">' + (x.sårbarhet === null ? '–' : x.sårbarhet.toFixed(2)) + '</span>';
+
+    const spar = nod('span', '', 'spar');
+    const sar = nod('span', '', 'sar' + (ok ? ' ok' : ''));
+    sar.style.width = bredd.toFixed(0) + '%';
+    spar.append(sar);
+    if (x.dom !== null) {
+      const tro = nod('span', '', 'tro');
+      tro.style.left = (x.dom * 100).toFixed(0) + '%';
+      spar.append(tro);
+    }
+    rad.append(
+      nod('span', x.från, 'vem'),
+      spar,
+      nod('span', x.sårbarhet === null ? '–' : x.sårbarhet.toFixed(2), 'tal'),
+    );
     rad.title = (x.hål || 'ej angripet') + (x.motfråga ? ' → ' + x.motfråga : '')
       + (x.dom === null ? '' : '\nstadens tro: ' + x.dom);
     p.appendChild(rad);
