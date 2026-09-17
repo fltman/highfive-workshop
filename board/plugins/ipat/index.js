@@ -36,10 +36,12 @@ function readJson(req) {
 function trådar(pulse) {
   const byId = new Map(pulse.map(e => [e.id, e]));
   const rot = e => { let x = e, n = 0; while (x && x.orsak && byId.has(x.orsak) && n++ < 10) x = byId.get(x.orsak); return x; };
+  // ursprung kan peka på frågan eller på något längre ner i kedjan (t.ex. svaret), vi följer den till roten
+  const rotId = id => { const x = byId.get(id); if (!x) return id; const r = rot(x); const u = Number(r.nyttolast?.ursprung); return u && u < r.id ? rotId(u) : r.id; };
   const trådar = new Map();
   for (const e of pulse) {
     if (e.typ !== 'fråga' || e.orsak) continue;
-    const ursprung = Number(e.nyttolast?.ursprung) || e.id;
+    const ursprung = e.nyttolast?.ursprung ? rotId(Number(e.nyttolast.ursprung)) : e.id;
     if (!trådar.has(ursprung)) trådar.set(ursprung, { id: ursprung, text: text(e.nyttolast), från: e.från, ts: e.ts, varv: [] });
     trådar.get(ursprung).varv.push({ id: e.id, nr: Number(e.nyttolast?.varv) || 1, ts: e.ts, delsvar: [], svar: null, kyrkogård: [], dom: null });
   }
@@ -54,6 +56,11 @@ function trådar(pulse) {
     else if (e.typ === 'kyrkogård') v.kyrkogård.push({ ...kort, fitness: e.nyttolast?.fitness, varför: e.nyttolast?.varför ?? e.nyttolast?.['varför det föll'] });
     else if (e.typ === 'godkänt') v.dom = { ...kort, utslag: 'godkänt' };
     else if (e.typ === 'fråga') v.dom = { ...kort, utslag: 'varv två' };
+  }
+  // ett varv som följs av ett nytt varv skickades tillbaka, även om kritikern postade frågan utan orsak
+  for (const t of trådar.values()) {
+    t.varv.sort((a, b) => a.id - b.id);
+    t.varv.forEach((v, i) => { const nästa = t.varv[i + 1]; if (nästa && !v.dom) v.dom = { id: nästa.id, från: byId.get(nästa.id)?.från, utslag: 'varv två' }; });
   }
   return [...trådar.values()].sort((a, b) => b.id - a.id).slice(0, TRÅDAR);
 }
