@@ -195,8 +195,8 @@
         if (!k || !k.team || nodForTeam.has(k.team)) continue;
         const farg = api.färg(k.team);
         const live = k.live != null && isFinite(Number(k.live)) ? Number(k.live) : null;
-        const nod = { typ: 'kvarter', k, team: String(k.team), namn: String(k.namn || k.team), ledning: !!k.ledning, live, fran: live != null ? Math.floor((live - start) / 1000) : null,
-          farg, rgb: rgb(farg), ton: k.ledning ? 0.78 : 1, radie: 9, x: 0, y: 0, w: 0, h: 0, synlig: false, pop: 0, blink: 0, sprite: null, bild: null };
+        const nod = { typ: 'kvarter', k, team: String(k.team), namn: String(k.namn || k.team), ledning: false, live, fran: live != null ? Math.floor((live - start) / 1000) : null,
+          farg, rgb: rgb(farg), ton: 1, radie: 9, x: 0, y: 0, w: 0, h: 0, synlig: false, pop: 0, blink: 0, sprite: null, bild: null };
         noder.push(nod); nodForTeam.set(nod.team, nod); nodForGemener.set(nod.team.toLowerCase(), nod);
       }
       const nodForAvs = avs.map((a, j) => {
@@ -331,7 +331,7 @@
         const iRad = roster.length > 0 && led.length > 0 && !mellan && pillerB + 360 < B;
 
         if (delt.length) {
-          etiketter.push({ text: 'DELTAGARNAS KVARTER', x: 0, y: y + eh / 2 - 2, hoger: false });
+          etiketter.push({ text: 'KVARTEREN', x: 0, y: y + eh / 2 - 2, hoger: false });
           y += eh; rutnat(delt, smal ? 3 : 4, 0.42, 82, 120);
         }
         if (led.length) {

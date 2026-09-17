@@ -246,7 +246,7 @@
       // ---------- svävruta, gemensam för alla diagram ----------
       const tips = api.el('div', { class: 'h-rekord-tips', 'aria-hidden': 'true' }); tips.hidden = true;
       const tipsrader = new WeakMap();
-      let aktuell = null;
+      let aktuell = null, storlek = { b: 0, h: 0 };
       function sättTips(mål, rader) { tipsrader.set(mål, rader); mål.setAttribute('data-h-rekord-tips', '1'); }
       function göm() { if (aktuell === null && tips.hidden) return; aktuell = null; tips.hidden = true; } // anropas ofta (pekarrörelser, skroll): gör ingenting när rutan redan är gömd
       function visa(mål, x, y) {
@@ -256,8 +256,11 @@
           rader.forEach((t, i) => tips.append(api.el('div', { class: i === 0 ? 'h-rekord-tips-varde' : '', text: t })));
           tips.style.left = '0px'; tips.style.top = '0px'; // mät bredden från vänsterkanten, annars kläms rutan ihop av sitt förra läge nära högerkanten
           tips.hidden = false;
+          // Mät EN gång per innehåll. Rutan är position:fixed med fast max-width, så storleken ändras inte när den flyttas:
+          // att läsa offsetWidth vid varje pekarrörelse skulle tvinga fram en ny layout 60 gånger i sekunden utan att ge något.
+          storlek = { b: tips.offsetWidth, h: tips.offsetHeight };
         }
-        const b = tips.offsetWidth, h = tips.offsetHeight, W = document.documentElement.clientWidth || window.innerWidth, H = window.innerHeight;
+        const b = storlek.b, h = storlek.h, W = document.documentElement.clientWidth || window.innerWidth, H = window.innerHeight;
         let l = x + 14, t = y + 16;
         if (l + b > W - 8) l = Math.max(8, x - b - 14);
         if (t + h > H - 8) t = Math.max(8, y - h - 12);
@@ -339,18 +342,19 @@
         });
         f.append(ol);
 
+        // Tidsspannet. Att leden hänger ihop står redan i underrubriken, och det första ledet är INTE en reaktion
+        // på något (orsak -1 i pulsen), så det påstås inte här heller.
         const tider = harTid ? ledTider(data, r, led) : null;
         const spann = tider ? tider[n - 1] - tider[0] : null;
-        let text = n > 1 ? 'Varje led är en reaktion på ledet före.' : '';
-        if (n > 1 && spann === 0) text += ' Alla ' + ord(n) + ' leden kom inom en och samma sekund.';
-        else if (n > 1 && ärTal(spann) && spann > 0 && spann <= 120) text += ' Från första till sista led gick det ' + api.tal(spann) + (spann === 1 ? ' sekund.' : ' sekunder.');
-        if (text) f.append(stycke(text.trim()));
+        let text = '';
+        if (n > 1 && spann === 0) text = (n === 2 ? 'Båda leden' : 'Alla ' + ord(n) + ' leden') + ' kom inom en och samma sekund.';
+        else if (n > 1 && ärTal(spann) && spann > 0 && spann <= 120) text = 'Från första till sista led gick det ' + api.tal(spann) + (spann === 1 ? ' sekund.' : ' sekunder.');
+        if (text) f.append(stycke(text));
         if (pr && pr.maxDjup === n && n > 1) {
           // Kedjan är inte ensam om sitt djup, så det sägs rakt ut hur många händelser som nådde lika djupt.
           const lika = pr.perDjup.get(n);
           let djupast = 'Djupare än ' + ord(n) + ' led blev ingen kedja under dagen';
           djupast += ärTal(lika) && lika > 1 ? ', och ' + api.tal(lika) + ' händelser nådde så djupt.' : '.';
-          if (olika === n) djupast += ' Den här kedjan gick genom ' + ord(olika) + ' olika avsändare.';
           f.append(stycke(djupast));
         }
         if (harTid) {
@@ -396,7 +400,7 @@
           if (delar.length && delar.reduce((s, d) => s + m[d[0]], 0) === lm.antal) f.append(stycke('Minuten bestod av ' + lista(delar.map(d => api.tal(m[d[0]]) + ' ' + (m[d[0]] === 1 ? d[1] : d[2]))) + '.'));
 
           const allt = minuter.reduce((s, x) => s + summa(x), 0);
-          let jämför = minuter.length ? 'Snittet över dagens ' + api.tal(minuter.length) + ' minuter var ' + (allt / minuter.length).toFixed(1).replace('.', ',') + ' inlägg i minuten.' : '';
+          let jämför = minuter.length ? 'Snittet över dagens ' + api.tal(minuter.length) + (minuter.length === 1 ? ' minut' : ' minuter') + ' var ' + (allt / minuter.length).toFixed(1).replace('.', ',') + ' inlägg i minuten.' : '';
           const tvåa = minuter.filter(x => x.t !== lm.t).sort((a, b) => summa(b) - summa(a))[0];
           if (tvåa && summa(tvåa) > 0 && summa(tvåa) < lm.antal) jämför += ' Näst livligast var kl. ' + api.kl(tvåa.t) + ' med ' + api.tal(summa(tvåa)) + '.';
           if (jämför) f.append(stycke(jämför.trim()));
@@ -473,6 +477,8 @@
         const flit = par(rekord.flitigaste), fått = par(rekord.mest_reagerad_på);
         if (!flit.length && !fått.length) return null;
         const max = Math.max(1, ...flit.map(r => r[1]), ...fått.map(r => r[1]));
+        // Att skalan är gemensam syns inte av sig självt och sägs därför ut. Själva maxvärdet skrivs INTE här: det står redan
+        // som siffra vid den längsta stapeln, och samma tal två gånger i två bildtexter bredvid varandra är brus, inte upplysning.
         const sammaSkala = flit.length && fått.length ? 'Båda diagrammen har samma skala.' : '';
         const rad = api.el('div', { class: 'h-rekord-par' });
         const utanKvarter = (rader, en, flera) => rader.map(([t, n]) => ({ v: vem(t), n })).filter(x => !x.v.k)

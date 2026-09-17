@@ -6,11 +6,13 @@
 //
 // Färgval: kontraktet tillåter bara stil.css-variablerna, och där finns fyra kulörta (--accent, --lila, --me, --röd).
 // Pulsen, Gatan, Bygge och Brainstorm bär dem, medan Torget, Hjälp och Övrigt går i gråskalan --fg, --dim, --svag.
-// Uppsättningen är prövad med dataviz-skillens validator mot ytan --panel: sämsta par 9,8 under simulerad färgblindhet
-// (mål 8), 15,6 för normalseende (golv 15) och kontrast minst 3:1 mot ytan, både för grannar och för alla par.
+// Uppsättningen är prövad med dataviz-skillens validator mot ytan --panel: över alla par 9,8 vid simulerad protanopi
+// (mål 8), 15,6 för normalseende (golv 15) och kontrast minst 3:1 mot ytan. Ett undantag: vid tritanopi ligger Gatans
+// lila och Hjälps grå på 5,2, alltså under golvet. De två kanalerna förekommer aldrig i samma femminutersfönster
+// (Hjälp slutar 11:40, Gatan börjar 12:00), så lagren möts aldrig i diagrammet.
 // Två av skillens kontroller går inte att uppfylla inom kontraktet: sajtens färger är ljusare än skillens ljushetsband
 // för mörkt läge, och de tre grå saknar kulör med flit. Identitet bärs därför aldrig av färg ensam: förklaringen,
-// avläsningsrutan och tabellen skriver alltid ut kanalens namn.
+// avläsningsrutan och tabellen skriver alltid ut kanalens namn, och lagren skiljs åt av en linje i ytans egen färg.
 (function () {
   'use strict';
 
@@ -344,12 +346,15 @@
         ruta.append(knapp);
       }
 
+      // Den svävande rutan hålls innanför diagrammets egen ruta, både i sidled och i höjdled. Ett fönster med fyra
+      // milstolpar (som 10:55–11:00) ger en hög ruta, och utan höjdklämman skulle den lägga sig över texten under kortet.
       function läggRuta() {
         if (!geo || vald == null || geo.dockad) { ruta.style.left = ''; ruta.style.top = ''; return; }
         const cx = xAv(f[vald].t + FÖNSTER / 2) * geo.k, bw = ruta.offsetWidth || 252, W = ram.clientWidth || geo.W;
         let vänster = cx + 16; if (vänster + bw > W - 4) vänster = cx - 16 - bw;
         ruta.style.left = Math.round(kläm(vänster, 4, Math.max(4, W - bw - 4))) + 'px';
-        ruta.style.top = Math.round(geo.pt * geo.k + 6) + 'px';
+        const bh = ruta.offsetHeight || 0, ramH = ram.clientHeight || geo.H * geo.k;
+        ruta.style.top = Math.round(kläm(geo.pt * geo.k + 6, 2, Math.max(2, ramH - bh - 2))) + 'px';
       }
 
       function ritaSikte(ms) {
@@ -369,10 +374,13 @@
         const talar = nyttLäge === 'mus' ? 'off' : 'polite';
         if (ruta.getAttribute('aria-live') !== talar) ruta.setAttribute('aria-live', talar);
         const ms = milstolparFör(i, t), nyckel = i + '|' + ms.lista.map(m => m.ts + m.rubrik).join('|');
-        if (nyckel !== rutnyckel) { rutnyckel = nyckel; fyllRuta(i, ms); ritaSikte(ms); }
+        const nytt = nyckel !== rutnyckel, varLast = ruta.classList.contains('h-puls-last'), blirLast = läge === 'tryck';
+        if (nytt) { rutnyckel = nyckel; fyllRuta(i, ms); ritaSikte(ms); }
         ruta.classList.add('h-puls-synlig');
-        ruta.classList.toggle('h-puls-last', läge === 'tryck');
-        läggRuta();
+        ruta.classList.toggle('h-puls-last', blirLast);
+        // Rutan hänger på fönstrets mitt, inte på pekaren, så den behöver bara läggas om när innehållet eller höjden
+        // ändras. Att hoppa över det gör att en musrörelse inom samma fönster inte tvingar fram en ny layoutberäkning.
+        if (nytt || blirLast !== varLast) läggRuta();
       }
 
       function dölj() {

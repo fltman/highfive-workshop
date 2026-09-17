@@ -120,7 +120,7 @@
     else if (k.citat && typeof k.citat === 'object') citat = { text: text(k.citat.text), vem: text(k.citat.vem) };
     if (citat) citat.text = hållIhopTal(utanYttreCitattecken(citat.text));
     if (citat && !citat.text) citat = null;
-    const ut = { tid: putsaTid(text(k.tid)), rubrik: text(k.rubrik), stycken: stycken(k.stycken), citat, hoppa: null, råHoppa: k.hoppa_ts };
+    const ut = { tid: putsaTid(text(k.tid)), rubrik: text(k.rubrik), stycken: stycken(k.stycken), citat, råHoppa: k.hoppa_ts };
     if (!ut.rubrik && !ut.stycken.length && !ut.citat) return null;
     return ut;
   }
@@ -135,8 +135,9 @@
 
   // hoppa_ts måste vara ett klockslag under workshopdagen (fem minuters marginal, sedan kläms det in i filmen).
   // Allt annat, till exempel sekunder i stället för millisekunder, ger ingen länk alls hellre än en länk som hamnar fel.
+  // Bara tal och siffersträngar räknas: en lista eller ett objekt i JSON kan bli ett tal av misstag ([1789630711638] → 1789630711638).
   function giltigHoppa(rå, data) {
-    if (rå == null || rå === '' || typeof rå === 'boolean') return null;
+    if ((typeof rå !== 'number' && typeof rå !== 'string') || rå === '') return null;
     const ts = Number(rå);
     if (!Number.isFinite(ts) || ts <= 0 || ts > 8.64e15) return null;
     const meta = (data && data.meta) || {}, start = Number(meta.start), slut = Number(meta.slut);
@@ -149,7 +150,7 @@
   // resten är minuträkning. Håller så länge dagen saknar sommartidsskifte, vilket 17 september gör.
   function klocktolk(data, api) {
     const start = Number(data && data.meta && data.meta.start);
-    if (!Number.isFinite(start)) return null;
+    if (!Number.isFinite(start) || start <= 0) return null; // Number(null) blir 0: utan dagens starttid finns ingen väggklocka att räkna från
     let m = null;
     try { m = /(\d{1,2})\D(\d{2})/.exec(api.kl(start)); } catch (e) { return null; }
     if (!m) return null;
@@ -360,7 +361,8 @@
       art.append(sek);
       delar.push(sek); spann.push(s);
     });
-    // Slutmärket sätts bara när krönikans allra sista element är ett stycke (ett ensamt stycke följs av sitt citat).
+    // Slutmärket sätts bara när sista kapitlets brödtext slutar med ett stycke (ett ensamt stycke följs av sitt citat).
+    // Filmlänken får stå under märket: den är en väg vidare, inte en del av texten.
     const sista = antal ? k.kapitel[antal - 1] : null;
     if (sistaStycke && sista && sista.stycken.length && (sista.stycken.length > 1 || !sista.citat)) sistaStycke.classList.add('h-kronika-slut');
 

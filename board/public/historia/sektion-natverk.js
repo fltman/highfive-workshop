@@ -219,8 +219,8 @@
 
       const ganger = n => (n === 1 ? '1 gång' : api.tal(n) + ' gånger');
       const handelser = n => (n === 1 ? '1 händelse' : api.tal(n) + ' händelser');
-      // "de 2 513 gånger" / "den enda gången", som delar till stycke() så att talet får stå i fetstil.
-      const deGanger = n => (n === 1 ? ['den enda gången'] : ['de ', ['b', api.tal(n)], ' gånger']);
+      const RAKNEORD = ['noll', 'en', 'två', 'tre', 'fyra', 'fem', 'sex', 'sju', 'åtta', 'nio', 'tio'];
+      const rakneord = n => RAKNEORD[n] || api.tal(n);
       const fullt = n => (n.namn.toLowerCase() !== n.team.toLowerCase() ? n.namn + ' (' + n.team + ')' : n.namn);
       const prick = n => {
         const p = api.el('span', { class: 'h-natverk-prick' + (n.ledning ? ' h-natverk-ihalig' : ''), 'aria-hidden': 'true' });
@@ -271,7 +271,7 @@
       rad.append(yta, panel, forklaring);
       rot.append(rad);
 
-      let hover = null, fast = null, senasteBredd = -1, väntar = false;
+      let hover = null, fast = null, senasteBredd = -1, väntar = false, panelNyckel = null;
       const aktuell = () => hover || (fast ? { typ: 'nod', team: fast } : null);
 
       function markera() {
@@ -299,6 +299,12 @@
 
       function ritaPanel() {
         const v = aktuell();
+        // Rutans innehåll beror bara på vad som är markerat och vad som är fäst. Ritas den om med exakt samma innehåll
+        // läser en skärmläsare upp den en gång till (aria-live), och en "Släpp"-knapp som just tagit emot tangentbords-
+        // fokus byts ut mitt i steget, så att fokus tappas. Därför görs ingenting när läget är oförändrat.
+        const nyckel = (v ? v.typ + SKILJE + (v.typ === 'nod' ? v.team : v.i) : '-') + SKILJE + (fast || '');
+        if (nyckel === panelNyckel) return;
+        panelNyckel = nyckel;
         panel.textContent = '';
         const vn = v && v.typ === 'nod' ? m.perTeam.get(v.team) || null : null;
         const vk = v && v.typ === 'kant' ? m.kanter[v.i] || null : null;
@@ -396,7 +402,7 @@
           n.r = radie(n.handelser);
           const g = s('g', { class: 'h-natverk-nod', tabindex: '0', role: 'button', 'data-team': n.team, 'aria-pressed': 'false' });
           g.setAttribute('aria-label', fullt(n) + (n.utan ? ', avsändare utan eget kvarter' : n.ledning ? ', byggt av workshopledningen' : '') + ': ' +
-            api.tal(n.handelser) + ' händelser, andra reagerade ' + ganger(n.fatt) + ' på det, det reagerade ' + ganger(n.gett) + ' på andra.');
+            handelser(n.handelser) + ', andra reagerade ' + ganger(n.fatt) + ' på ' + (n.utan ? 'avsändaren' : 'kvarteret') + ', som reagerade ' + ganger(n.gett) + ' på andra.');
           n.traff = s('rect', { class: 'h-natverk-traff' });
           g.append(n.traff, s('circle', { class: 'h-natverk-ring', r: f1(n.r + 3.5) }), s('circle', { class: 'h-natverk-bas', r: f1(n.r + 2) }));
           const punkt = s('circle', { r: f1(n.ledning ? Math.max(1.5, n.r - 1) : n.r) });
@@ -600,7 +606,7 @@
 
       // ---- De starkaste relationerna som meningar, med staplar i rät skala ----
       const topp = m.kanter.slice(0, 10);
-      rot.append(api.el('h3', { class: 'h-natverk-h3', text: 'De ' + (topp.length === 10 ? 'tio' : topp.length) + ' starkaste relationerna' }));
+      rot.append(api.el('h3', { class: 'h-natverk-h3', text: topp.length === 1 ? 'Den starkaste relationen' : 'De ' + rakneord(topp.length) + ' starkaste relationerna' }));
       rot.append(api.el('p', { class: 'h-natverk-h3under', text: 'Samma sak i ord, för den som hellre läser än tyder bågar. Pilen går från den som orsakade till den som reagerade, och staplarna är i rät skala.' }));
       const lista = api.el('ol', { class: 'h-natverk-topp' });
       lista.style.setProperty('--h-natverk-rader', String(Math.max(1, Math.ceil(topp.length / 2))));
@@ -624,7 +630,7 @@
       rot.append(lista);
 
       // ---- Tabellvy: varenda relation ----
-      const alla = api.el('details', { class: 'h-natverk-alla' }, [api.el('summary', { text: 'Visa alla ' + api.tal(m.kanter.length) + ' relationer som tabell' })]);
+      const alla = api.el('details', { class: 'h-natverk-alla' }, [api.el('summary', { text: m.kanter.length === 1 ? 'Visa den enda relationen som tabell' : 'Visa alla ' + api.tal(m.kanter.length) + ' relationer som tabell' })]);
       const tabell = api.el('table', { class: 'h-natverk-tabell' });
       tabell.append(api.el('caption', { text: 'En rad per båge i diagrammet, störst först.' }));
       tabell.append(api.el('thead', {}, [api.el('tr', {}, [
