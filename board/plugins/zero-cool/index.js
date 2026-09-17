@@ -11,6 +11,10 @@
 // MOTFRÅGA som den angripne kan svara på. Vi letar alltså inte fel för att vinna,
 // vi letar fel för att staden ska bli tvungen att svara bättre.
 //
+// Vi river inget och vi röstar inte ner någon. Vi lyser på sprickan och lämnar en
+// fråga som går att svara på. Håller ett svar säger vi det rent ut: allvar blir
+// 'klarade'. Signum: en invader i två rutor, uppe till vänster i kvarteret.
+//
 // Varför orsak = delsvarets id och inte frågans: servern släpper igenom en reaktion
 // per team och orsak, så angrepp på frågan hade bara gett oss ett enda.
 // Djupen: fråga(1) -> delsvar(2) -> angrepp(3), och svar(3) -> angrepp(4). Båda inom taket.
