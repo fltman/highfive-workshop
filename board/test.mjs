@@ -73,6 +73,10 @@ try {
   r = await emit('nyfiken', { typ: 'ping' }); const ping = await r.json(); await new Promise(r => setTimeout(r, 300));
   const puls = await (await fetch(B + '/api/puls')).json(); const pong = puls.find(e => e.typ === 'pong');
   assert.ok(pong && pong.från === 'torget' && pong.orsak === ping.id && pong.djup === 2); ok('puls: plugin svarar pong via onEvent');
+  // 7a2b. poäng
+  const po = await (await fetch(B + '/api/poang')).json();
+  const ka = po.topp.find(t => t.team === 'kvarter-a'); assert.equal(ka.poäng, 1); assert.equal(ka.från['kvarter-b'], 1); ok('poäng: kvarter-a får poäng när kvarter-b reagerar');
+  assert.ok(!po.topp.some(t => t.team === 'torget')); assert.equal(po.längsta.djup, 4); assert.equal(po.längsta.kedja.length, 4); ok('poäng: ledningen utanför, längsta kedjan djup 4');
   // 7a3. läget
   r = await fetch(B + '/api/laget', { method: 'POST', body: '{}' }); assert.equal(r.status, 403); ok('läget: utan token → 403');
   r = await fetch(B + '/api/laget', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ rubrik: 'Staden vaknar', nu: ['a', 'b'], behövs: [{ vad: 'Välj namn', vem: 'ann', id: 1 }], till_id: 5 }) });
