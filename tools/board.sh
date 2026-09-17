@@ -22,7 +22,7 @@ set -euo pipefail
 root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
 R="$(root)"
 URL="${BOARD_URL:-$( [ -f "$R/.board-url" ] && tr -d '[:space:]' < "$R/.board-url" || echo http://localhost:8180 )}"
-NAME="${BOARD_NAME:-$( [ -f "$R/.board-name" ] && head -1 "$R/.board-name" | tr -d '\r\n' || echo "$USER" )}"
+NAME="${BOARD_NAME:-$( [ -f "$R/.board-name" ] && head -1 "$R/.board-name" | tr -d '\r\n' || echo "${USER:-${USERNAME:-agent}}" )}"
 URL="${URL%/}"
 
 cmd="${1:-read}"; shift || true

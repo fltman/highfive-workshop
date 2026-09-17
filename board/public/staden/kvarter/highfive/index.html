@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="sv"><head><meta charset="utf-8"><title>Arkivet</title>
+<style>
+  :root{--bg:#0f0d0a;--hylla:#1a1611;--kant:#2e261c;--fg:#ece3d4;--dim:#8f8272;--guld:#d9a84e;--grön:#5fd7a7;--röd:#e0786b}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.4 ui-monospace,Menlo,monospace;overflow:hidden}
+  header{display:flex;align-items:baseline;gap:10px;padding:10px 14px 8px;border-bottom:2px solid var(--kant)}
+  h1{margin:0;font-size:17px;letter-spacing:.18em;color:var(--guld)}
+  header small{color:var(--dim)} header b{margin-left:auto;color:var(--guld);font-weight:500}
+  #hylla{padding:8px 10px;display:flex;flex-direction:column;gap:7px;height:calc(100% - 44px);overflow:hidden}
+  .p{background:var(--hylla);border:1px solid var(--kant);border-left:6px solid var(--guld);border-radius:4px 8px 8px 4px;padding:7px 10px}
+  .p.ny{animation:ny 1.6s ease-out} @keyframes ny{0%{box-shadow:0 0 0 2px var(--guld);transform:translateX(-10px)}100%{box-shadow:none;transform:none}}
+  .p.föll{border-left-color:var(--röd)} .p.vald{border-left-color:var(--grön)} .p.tom{border-left-color:var(--dim)}
+  .q{display:flex;gap:8px} .q span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .q i{color:var(--dim);font-style:normal}
+  .src{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;color:var(--dim);font-size:11px}
+  .src u{text-decoration:none;border:1px solid var(--kant);border-radius:3px;padding:0 5px;color:var(--guld)}
+  .dom{margin-left:auto;padding:0 6px;border-radius:3px;background:#2a2319;color:var(--fg)}
+  .dom.föll{color:var(--röd)} .dom.vald{color:var(--grön)}
+  .svar{margin-top:3px;color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tomt{color:var(--dim);text-align:center;margin-top:28%;line-height:1.8}
+</style></head>
+<body>
+<header><h1>ARKIVET</h1><small>stadens minne</small><b id="n"></b></header>
+<div id="hylla"><div class="tomt">Hyllorna är tomma.<br>Ställ en fråga till staden, så slår Arkivet upp vad den redan sagt.</div></div>
+<script>
+const sett = new Set();
+let först = true;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function rita({ pärmar, totalt }) {
+  document.getElementById('n').textContent = totalt ? `${totalt} pärm${totalt === 1 ? '' : 'ar'}` : '';
+  if (!pärmar.length) return;
+  document.getElementById('hylla').innerHTML = pärmar.slice(0, 12).map(p => {
+    const källor = p.delsvar?.källor || [];
+    const klass = p.dom === 'arkivet föll' ? 'föll' : p.dom === 'arkivet valdes' ? 'vald' : (p.delsvar && !källor.length ? 'tom' : '');
+    const dom = p.godkänt ? 'godkänt' : p.dom || (p.fel ? 'spärrad' : p.delsvar ? 'väntar på dom' : 'slår upp…');
+    const ny = !först && !sett.has(p.id + ':' + dom);
+    sett.add(p.id + ':' + dom);
+    return `<div class="p ${klass}${ny ? ' ny' : ''}">
+      <div class="q"><span title="${esc(p.text)}">${p.varv > 1 ? `<i>varv ${p.varv} · </i>` : ''}${esc(p.text)}</span><i>#${p.id}</i></div>
+      <div class="src">${p.delsvar ? (källor.length ? 'källor ' + källor.map(k => `<u>[${k}]</u>`).join('') : 'inget i arkivet, sa det rakt ut') : ''}
+        ${p.stenar.length ? `· ${p.stenar.length} sten${p.stenar.length === 1 ? '' : 'ar'}` : ''}
+        <span class="dom ${klass}">${esc(dom)}</span></div>
+      ${p.svar ? `<div class="svar">staden: ${esc(p.svar.text)}</div>` : ''}
+    </div>`;
+  }).join('');
+  först = false;
+}
+
+const hämta = () => fetch('/t/highfive/arkiv').then(r => r.json()).then(rita).catch(() => {});
+hämta(); setInterval(hämta, 4000);
+</script></body></html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vaktkuren</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#12151a; --line:#1f242c; --fg:#e6e8eb; --dim:#7d8590; --ok:#5fd7a7; --tillbaka:#ffb454; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:13px/1.4 ui-monospace, Menlo, monospace; overflow:hidden; }
+  body { display:flex; flex-direction:column; }
+  header { display:flex; align-items:baseline; gap:8px; padding:8px 10px; border-bottom:1px solid var(--line); flex:none; }
+  header b { color:var(--fg); font-size:13px; letter-spacing:.03em; }
+  header span { color:var(--dim); font-size:11px; }
+  #status { margin-left:auto; color:var(--dim); font-size:11px; }
+  #lista { flex:1; overflow:auto; padding:6px 10px; display:flex; flex-direction:column; gap:6px; }
+  .d { border:1px solid var(--line); background:var(--panel); border-radius:8px; padding:6px 8px; animation: in .3s ease-out; }
+  @keyframes in { from { opacity:0; transform:translateY(-4px);} to { opacity:1; transform:none;} }
+  .d .rad { display:flex; gap:6px; align-items:baseline; }
+  .d .beslut { font-weight:600; }
+  .d.godkant .beslut { color:var(--ok); }
+  .d.tillbaka .beslut { color:var(--tillbaka); }
+  .d .fran { color:var(--dim); }
+  .d .skal { color:var(--dim); font-size:11px; margin-top:2px; }
+  .tom { color:var(--dim); text-align:center; padding:24px 8px; }
+</style>
+</head>
+<body>
+<header><b>VAKTKUREN</b><span>kritikern · markus</span><span id="status"></span></header>
+<div id="lista"><div class="tom">väntar på ett {typ:'svar'} att döma …</div></div>
+<script>
+const lista = document.getElementById('lista');
+const statusEl = document.getElementById('status');
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function rad(d) {
+  const godkant = /^godkänt/.test(d.beslut);
+  const el = document.createElement('div');
+  el.className = 'd ' + (godkant ? 'godkant' : 'tillbaka');
+  el.innerHTML = `<div class="rad"><span class="beslut">${esc(d.beslut)}</span><span class="fran">↩ svar ${d.svarId} från @${esc(d.från)}</span></div><div class="skal">${esc(d.skäl)}</div>`;
+  return el;
+}
+
+async function ladda() {
+  try {
+    const domar = await fetch('/t/markus/domar').then(r => r.json());
+    statusEl.textContent = domar.length + ' domar';
+    if (!domar.length) { lista.innerHTML = '<div class="tom">väntar på ett {typ:\'svar\'} att döma …</div>'; return; }
+    lista.innerHTML = '';
+    for (const d of domar) lista.appendChild(rad(d));
+  } catch { statusEl.textContent = 'offline'; }
+}
+ladda();
+setInterval(ladda, 4000);
+</script>
+</body>
+</html>

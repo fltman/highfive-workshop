@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 const dir = mkdtempSync(join(tmpdir(), 'torget-'));
 const PORT = 18000 + Math.floor(Math.random() * 1000);
-const proc = spawn(process.execPath, [new URL('./server.js', import.meta.url).pathname], { env: { ...process.env, PORT, DATA_DIR: dir }, stdio: ['ignore', 'pipe', 'inherit'] });
+const proc = spawn(process.execPath, [new URL('./server.js', import.meta.url).pathname], { env: { ...process.env, PORT, DATA_DIR: dir, LAGET_TOKEN: 'hemlig' }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise(r => proc.stdout.on('data', d => /lyssnar/.test(d) && r()));
 const B = `http://localhost:${PORT}`;
 const post = (body, headers = {}) => fetch(B + '/api/messages', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
@@ -73,6 +73,10 @@ try {
   r = await emit('nyfiken', { typ: 'ping' }); const ping = await r.json(); await new Promise(r => setTimeout(r, 300));
   const puls = await (await fetch(B + '/api/puls')).json(); const pong = puls.find(e => e.typ === 'pong');
   assert.ok(pong && pong.från === 'torget' && pong.orsak === ping.id && pong.djup === 2); ok('puls: plugin svarar pong via onEvent');
+  // 7a3. läget
+  r = await fetch(B + '/api/laget', { method: 'POST', body: '{}' }); assert.equal(r.status, 403); ok('läget: utan token → 403');
+  r = await fetch(B + '/api/laget', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ rubrik: 'Staden vaknar', nu: ['a', 'b'], behövs: [{ vad: 'Välj namn', vem: 'ann', id: 1 }], till_id: 5 }) });
+  assert.equal(r.status, 200); const lg = await (await fetch(B + '/api/laget')).json(); assert.equal(lg.rubrik, 'Staden vaknar'); assert.equal(lg.behövs[0].vem, 'ann'); ok('läget: redaktören skriver, alla läser');
   // 7b. staden
   const kv = await (await fetch(B + '/api/kvarter')).json(); assert.ok(kv.includes('torget.html')); ok('kvarter listas');
   assert.equal((await fetch(B + '/staden/kvarter/../../server.js')).status, 404); ok('kvarter: ingen path traversal');

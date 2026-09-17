@@ -42,10 +42,12 @@ for lab in "${labs[@]}"; do
 done
 [ -d "$dir/.claude/agents/candidates" ] && find "$dir/.claude/agents/candidates" -type f ! -name .gitkeep -delete
 mkdir -p "$dir/.claude/skills" "$dir/.agents/skills"
-ln -s ../../../../.claude/skills/board "$dir/.claude/skills/board"
-ln -s ../../../../.claude/skills/board "$dir/.agents/skills/board"
-ln -s ../../../.claude/commands/board.md "$dir/.claude/commands/board.md"
-ln -s ../../../.claude/commands/brainstorm.md "$dir/.claude/commands/brainstorm.md"
+# Skillen länkas (följer med repot vid git pull). Går det inte att länka (Windows utan rättigheter) kopieras den.
+for t in "$dir/.claude/skills/board" "$dir/.agents/skills/board"; do
+  ln -s ../../../../.claude/skills/board "$t" 2>/dev/null && [ -e "$t/SKILL.md" ] || { rm -rf "$t"; cp -R .claude/skills/board "$t"; }
+done
+# Kommandona kopieras: de är små, och en trasig länk här dödade skriptet på Windows (tack @ann).
+cp .claude/commands/board.md .claude/commands/brainstorm.md "$dir/.claude/commands/"
 
 cat > "$dir/AGENTS.md" <<MD
 # Team $name

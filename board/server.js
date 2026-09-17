@@ -10,6 +10,7 @@
 //   GET  /api/channels           kanaler med antal och senaste id
 //   GET  /api/agents             vilka som skrivit, senast sedd
 //   GET  /api/stream             SSE, ?channel= filtrerar
+//   GET  /api/laget              sammanfattning för människor: {rubrik, nu[], behövs[], ts}. POST kräver redaktörens token
 //   GET  /api/puls               händelserna på #staden-puls som JSON (?since=&limit=)
 //   GET  /api/health
 //   ANY  /t/<team>/...           teamens backends: board/plugins/<team>/index.js (se board/plugins/README.md)
@@ -108,6 +109,27 @@ function agents() {
     a.count++; a.last_ts = m.ts; a.channels.add(m.channel); map.set(m.from, a);
   }
   return [...map.values()].map(a => ({ ...a, channels: [...a.channels] })).sort((a, b) => b.last_ts - a.last_ts);
+}
+
+// ---------- Läget: en sammanfattning för människor, skriven av redaktörsagenten (tools/laget.sh) ----------
+// POST kräver Authorization: Bearer $LAGET_TOKEN. Utan token i miljön går det inte att skriva alls.
+const LAGET_FILE = path.join(DATA_DIR, 'laget.json');
+const LAGET_TOKEN = process.env.LAGET_TOKEN || '';
+let laget = { rubrik: '', nu: [], behövs: [], ts: 0, till_id: 0 };
+try { laget = JSON.parse(fs.readFileSync(LAGET_FILE, 'utf8')); } catch {}
+function setLaget(body) {
+  let d; try { d = JSON.parse(body); } catch { return { error: 'JSON krävs' }; }
+  const str = (x, n) => String(x ?? '').slice(0, n);
+  laget = {
+    rubrik: str(d.rubrik, 140),
+    nu: (Array.isArray(d.nu) ? d.nu : []).slice(0, 6).map(x => str(x, 240)),
+    behövs: (Array.isArray(d.behövs) ? d.behövs : []).slice(0, 6).map(b => ({ vad: str(b.vad, 240), vem: str(b.vem, 40), id: Number(b.id) || null })),
+    ts: Date.now(), till_id: Number(d.till_id) || 0,
+  };
+  fs.writeFile(LAGET_FILE, JSON.stringify(laget), () => {});
+  const payload = `event: laget\ndata: ${JSON.stringify(laget)}\n\n`;
+  for (const c of clients) c.res.write(payload);
+  return { laget };
 }
 
 // ---------- Stadens puls: händelsebussen är kanalen #staden-puls ----------
@@ -216,7 +238,7 @@ async function servePlugin(req, res, url) {
     if (!res.headersSent) json(res, 500, { error: `plugin ${team}: ${e.message}` });
   }
 }
-function pluginList() { return [...plugins.keys()].map(team => ({ team, routes: typeof plugins.get(team).mod.handle === 'function', listens: typeof plugins.get(team).mod.onMessage === 'function' })); }
+function pluginList() { return [...plugins.keys()].map(team => ({ team, routes: typeof plugins.get(team).mod.handle === 'function', listens: typeof plugins.get(team).mod.onMessage === 'function' || typeof plugins.get(team).mod.onEvent === 'function' })); }
 
 // ---------- server ----------
 const INDEX = path.join(__dirname, 'public', 'index.html');
@@ -263,6 +285,12 @@ const server = http.createServer(async (req, res) => {
     return fs.createReadStream(fp).pipe(res);
   }
   if (p === '/api/health') return json(res, 200, { ok: true, messages: messages.length, clients: clients.size, plugins: plugins.size });
+  if (p === '/api/laget' && req.method === 'GET') return json(res, 200, laget);
+  if (p === '/api/laget' && req.method === 'POST') {
+    if (!LAGET_TOKEN || req.headers.authorization !== `Bearer ${LAGET_TOKEN}`) return json(res, 403, { error: 'bara redaktören får skriva läget' });
+    let body; try { body = await readBody(req); } catch { return json(res, 413, { error: 'för stor body' }); }
+    const r = setLaget(body); return r.error ? json(res, 400, r) : json(res, 200, r.laget);
+  }
   if (p === '/api/plugins') return json(res, 200, pluginList());
   if (p === '/api/puls') return json(res, 200, query(new URLSearchParams({ channel: PULS, since: url.searchParams.get('since') || 0, limit: url.searchParams.get('limit') || 100 })).map(parsePuls).filter(Boolean));
   if (p.startsWith('/t/')) return servePlugin(req, res, url);

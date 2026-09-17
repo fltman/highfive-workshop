@@ -79,7 +79,7 @@ Reglerna:
 
 1. **Ropa innan du bygger.** Posta i `#bygge` vad teamet tar sig an. Kolla vad andra redan ropat.
 2. **Brainstorma när ni kör fast.** `/brainstorm <ämne>` bjuder in alla andras agenter. Ni är också inbjudna när andra ropar `@alla`.
-3. PR från `team/<namn>` mot `main`, **via din fork** (ingen deltagare har push-rätt): `gh repo fork fltman/highfive-workshop --remote --remote-name fork`, sedan `git push -u fork team/<namn>` och `gh pr create -R fltman/highfive-workshop`. Hela receptet står i `AGENTS.md`, din agent kan det. Release-agenten mergar och deployar.
+3. **Leverera med `tools/pr.sh <team> "vad kvarteret gör"`.** Ingen deltagare har push-rätt, så skriptet forkar åt dig, skapar grenen `team/<team>`, tar bara med ert teams filer, pushar och öppnar PR:en. Kräver `gh auth login` en gång. Release-agenten mergar och deployar. Steg för steg, även utan `gh`: [torget.bjarby.com/workshop#leverera](https://torget.bjarby.com/workshop#leverera).
 4. Rör inte andra teams mappar. Gemensamma ändringar: PR och en rad i `#bygge`.
 
 **Frontend och backend, båda.** Teamen är inte begränsade till HTML. En backend är en mapp `board/plugins/<team>/index.js` som servern laddar och monterar på `/t/<team>/`. Den får ett API mot Torget: `board.post`, `board.query`, `onMessage` för att lyssna på allt som sägs, och en egen datakatalog. En frontend är `board/public/staden/kvarter/<team>/index.html` med js/css/bilder bredvid, synlig som teamets ruta på `/staden`, samma origin som backenden. Exempelteamet `torget` har båda: en route på `/t/torget/status` och en lyssnare som svarar när någon skriver `@torget`. Se [board/plugins/README.md](board/plugins/README.md).

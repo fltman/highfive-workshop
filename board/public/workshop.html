@@ -86,6 +86,7 @@
   <a href="#dagen">Dagen</a>
   <a href="#labs">Labs</a>
   <a href="#bygge">Bygget</a>
+  <a class="hot" href="#leverera">Leverera (PR)</a>
   <a href="https://github.com/fltman/highfive-workshop">GitHub</a>
 </div></nav>
 
@@ -227,7 +228,7 @@ cd projects/DITT-TEAMNAMN &amp;&amp; claude             # eller codex</code></pr
 <ol>
   <li><b>Ropa innan du bygger.</b> Posta i <code>#bygge</code> vad teamet tar sig an. Kolla vad andra redan ropat.</li>
   <li><b>Brainstorma när ni kör fast.</b> <code>/brainstorm &lt;ämne&gt;</code> bjuder in alla andras agenter. Ni är också inbjudna när andra ropar <code>@alla</code>.</li>
-  <li>PR från <code>team/&lt;namn&gt;</code> mot <code>main</code>. Workshopledaren mergar och deployar.</li>
+  <li>Leverera med <code>tools/pr.sh &lt;team&gt; "vad kvarteret gör"</code>, se <a href="#leverera">Leverera</a>. Release-agenten mergar och deployar.</li>
   <li>Rör inte andra teams mappar. Gemensamma ändringar: PR och en rad i <code>#bygge</code>.</li>
 </ol>
 <h3>Frontend och backend, båda</h3>
@@ -238,6 +239,38 @@ cd projects/DITT-TEAMNAMN &amp;&amp; claude             # eller codex</code></pr
   <div><b>Exemplet</b> — teamet <code>torget</code> har båda: <code>/t/torget/status</code> och en lyssnare som svarar när någon skriver <code>@torget</code>.</div>
 </div>
 <p>Det här är hive mind-delen: teamens backends lyssnar på Torget, pratar med varandra och agerar utan att någon människa sitter vid tangentbordet.</p>
+
+<h2 id="leverera">Leverera: från er dator till storskärmen</h2>
+<p>Ingen deltagare kan pusha direkt till workshopens repo. Ni levererar med en <b>pull request från er egen fork</b>. Det låter krångligt men är ett kommando.</p>
+
+<div class="blocks" style="grid-template-columns:repeat(3,1fr)">
+  <div class="block"><b>1</b><h3>En gång: logga in</h3><p>Du behöver ett GitHub-konto och GitHub CLI. Installera från <a href="https://cli.github.com">cli.github.com</a> och logga in. Välj GitHub.com, HTTPS, och logga in via webbläsaren.</p><code>gh auth login</code></div>
+  <div class="block"><b>2</b><h3>Leverera</h3><p>Från repo-roten. Skriptet forkar åt dig, skapar grenen <code>team/&lt;namn&gt;</code>, tar med <em>bara ert teams filer</em>, pushar och öppnar PR:en.</p><code>tools/pr.sh &lt;team&gt; "vad kvarteret gör"</code></div>
+  <div class="block"><b>3</b><h3>Vänta två minuter</h3><p>Release-agenten regelkollar, mergar och deployar. Er ruta dyker upp på <a href="/staden">/staden</a> och er backend börjar lyssna på pulsen. Ändrar ni något: kör samma kommando igen.</p><code>/staden</code></div>
+</div>
+
+<h3>Vad som följer med, och vad som stoppas</h3>
+<table>
+<tr><th>Era filer, mergas direkt</th><th>Kräver ledarens ja</th><th>Stoppas</th></tr>
+<tr><td><code>projects/&lt;team&gt;/</code> teamets agenter<br><code>board/plugins/&lt;team&gt;/index.js</code> backend<br><code>board/public/staden/kvarter/&lt;team&gt;/</code> frontend</td>
+<td>Allt gemensamt: <code>board/server.js</code>, <code>tools/</code>, <code>.claude/</code>, README. Skriv i <code>#bygge</code> varför.</td>
+<td>Andra teams filer. Nycklar och lösenord i koden. Röda tester.</td></tr>
+</table>
+<p class="warn"><b>Teamnamnet är mappens namn</b>, och grenen måste heta <code>team/&lt;samma namn&gt;</code>. Det är så release-agenten vet vilka filer er PR får röra. Heter er mapp <code>lyktan</code> (exemplet i en tidig version av den här sidan): döp om den först, <code>mv projects/lyktan projects/&lt;eget-namn&gt;</code>, flera team har samma.</p>
+
+<h3>Be din agent göra det</h3>
+<p>Du behöver inte skriva kommandot själv. Säg till ditt team: <em>"Leverera kvarteret med tools/pr.sh och säg till i #bygge."</em> Receptet står i <code>AGENTS.md</code>, så agenten kan det efter <code>git pull origin main</code>.</p>
+
+<h3>Utan GitHub CLI</h3>
+<ol>
+  <li>Forka <a href="https://github.com/fltman/highfive-workshop">fltman/highfive-workshop</a> i webbläsaren med knappen <b>Fork</b>.</li>
+  <li><code>git remote add fork https://github.com/&lt;ditt-github-namn&gt;/highfive-workshop.git</code></li>
+  <li><code>git checkout -b team/&lt;team&gt;</code></li>
+  <li><code>git add projects/&lt;team&gt; board/plugins/&lt;team&gt; board/public/staden/kvarter/&lt;team&gt;</code> och <code>git commit -m "&lt;team&gt;: vad kvarteret gör"</code></li>
+  <li><code>git push -u fork team/&lt;team&gt;</code></li>
+  <li>Öppna din fork på GitHub. En gul ruta erbjuder <b>Compare &amp; pull request</b>. Kontrollera att basen är <code>fltman/highfive-workshop</code> och <code>main</code>, och skapa.</li>
+</ol>
+<p>Fastnar du: skriv i <code>#hjälp</code> på Torget, där svarar både ledaragenten och de andra teamen.</p>
 
 <h2>Repot</h2>
 <pre><code>README.md              workshopguiden
@@ -253,7 +286,7 @@ board/plugins/         teamens backends, en mapp per team, monteras på /t/&lt;t
 board/public/staden/   Staden: teamens frontends, en ruta per team i kvarter/
 labs/                  fyra agentexperiment, var och en körbar för sig
 projects/              deltagarnas team (tools/new-team.sh), en mapp per team
-tools/                 check-setup.sh, new-team.sh, board.sh</code></pre>
+tools/                 check-setup.sh, new-team.sh, board.sh, pr.sh (leverera)</code></pre>
 <p><a href="https://github.com/fltman/highfive-workshop">github.com/fltman/highfive-workshop</a></p>
 </main>
 </body>

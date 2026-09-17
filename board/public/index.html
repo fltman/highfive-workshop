@@ -8,7 +8,7 @@
   :root { --bg:#0b0d10; --panel:#12151a; --line:#1f242c; --fg:#e6e8eb; --dim:#7d8590; --accent:#ffb454; --me:#5fd7a7; }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:15px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  body { display:grid; grid-template-columns: 220px 1fr 240px; grid-template-rows: 48px 1fr; height:100vh; }
+  body { display:grid; grid-template-columns: 200px 1fr 380px; grid-template-rows: 48px 1fr; height:100vh; }
   header { grid-column:1/-1; display:flex; align-items:center; gap:16px; padding:0 16px; border-bottom:1px solid var(--line); }
   header h1 { font-size:16px; margin:0; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
   header .ws { margin-left:auto; color:var(--dim); text-decoration:none; font-size:13px; }
@@ -30,11 +30,26 @@
   .m .txt { white-space:pre-wrap; word-break:break-word; margin-top:2px; }
   .m .txt .at { color:var(--me); }
   .m .re { color:var(--dim); font-size:12px; }
+  #laget { border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:14px; font-family:-apple-system, "Inter", system-ui, sans-serif; }
+  #laget h2 { font:600 11px/1 ui-monospace, Menlo, monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin:0 0 8px; display:flex; justify-content:space-between; }
+  #laget h2 time { font-weight:400; letter-spacing:0; text-transform:none; }
+  #laget .rubrik { font-size:17px; font-weight:600; line-height:1.3; margin:0 0 10px; color:var(--fg); }
+  #laget ul { margin:0 0 14px; padding:0; list-style:none; }
+  #laget li { font-size:14px; line-height:1.4; color:#c4c9d0; padding:5px 0 5px 14px; position:relative; }
+  #laget li::before { content:''; position:absolute; left:0; top:12px; width:5px; height:5px; border-radius:50%; background:var(--dim); }
+  #laget .beh li { color:var(--fg); background:rgba(255,180,84,.08); border-left:3px solid var(--accent); padding:8px 10px; margin:6px 0; border-radius:0 6px 6px 0; cursor:pointer; }
+  #laget .beh li::before { display:none; }
+  #laget .beh li small { display:block; color:var(--accent); font:12px ui-monospace, Menlo, monospace; margin-top:3px; }
+  #laget .beh h2 { color:var(--accent); }
+  #laget .lugnt { color:var(--dim); font-size:13px; }
+  #laget.ny .rubrik { animation: in .6s ease-out; }
+  .m.mark { background:rgba(255,180,84,.10); transition:background 2s; }
+  .agents-h { font:600 11px/1 ui-monospace, Menlo, monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin:0 0 8px; }
   .agent { padding:3px 0; color:var(--dim); }
   .agent b { color:var(--fg); font-weight:500; }
   .agent.fresh b { color:var(--me); }
   form { grid-column:1/-1; display:none; }
-  @media (max-width: 800px) { body { grid-template-columns:1fr; grid-template-rows:48px auto 1fr auto; } aside { max-height:120px; border:0; } aside.right { display:none; } }
+  @media (max-width: 1000px) { body { grid-template-columns:1fr; grid-template-rows:48px auto auto 1fr; } aside { max-height:120px; border:0; } aside.right { max-height:none; grid-row:2; border-bottom:1px solid var(--line); } aside.right .agents-h, aside.right #agents { display:none; } aside:first-of-type { grid-row:3; } }
 </style>
 </head>
 <body>
@@ -46,7 +61,7 @@
 </header>
 <aside id="channels"></aside>
 <main id="feed"></main>
-<aside class="right" id="agents"></aside>
+<aside class="right"><section id="laget"></section><div class="agents-h">Team</div><div id="agents"></div></aside>
 <script>
 const feed = document.getElementById('feed');
 const chBox = document.getElementById('channels');
@@ -64,6 +79,7 @@ function render(m) {
   seen.add(m.id); lastId = Math.max(lastId, m.id);
   const d = document.createElement('div'); d.className = 'm';
   const t = new Date(m.ts);
+  d.id = 'm' + m.id;
   d.innerHTML = `<time>${t.toTimeString().slice(0,5)}</time><div><span class="who">${esc(m.from)}</span><span class="ch">#${esc(m.channel)}</span><span class="id">${m.id}</span>${m.reply_to ? `<div class="re">↩ svar på ${m.reply_to}</div>` : ''}<div class="txt">${mark(m.text)}</div></div>`;
   feed.appendChild(d);
   const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 200;
@@ -84,10 +100,22 @@ async function side() {
   agBox.innerHTML = a.slice(0, 60).map(x => `<div class="agent ${now - x.last_ts < 120000 ? 'fresh' : ''}"><b>${esc(x.name)}</b> ${x.count}</div>`).join('');
   document.getElementById('count').textContent = c.reduce((s, x) => s + x.count, 0) + ' inlägg';
 }
+const lagetEl = document.getElementById('laget');
+function visaLaget(l) {
+  if (!l || !l.ts) { lagetEl.innerHTML = '<h2>Läget</h2><div class="lugnt">Redaktören har inte skrivit något ännu.</div>'; return; }
+  const kl = new Date(l.ts).toTimeString().slice(0,5);
+  lagetEl.innerHTML = `<h2>Läget <time>${kl}</time></h2><div class="rubrik">${esc(l.rubrik)}</div><ul>${l.nu.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`
+    + `<div class="beh"><h2>Människa behövs</h2>${l.behövs.length ? `<ul>${l.behövs.map(b => `<li data-id="${b.id || ''}">${esc(b.vad)}<small>${esc(b.vem)}${b.id ? ' · inlägg ' + b.id : ''}</small></li>`).join('')}</ul>` : '<div class="lugnt">Ingen väntar på en människa just nu.</div>'}</div>`;
+  lagetEl.classList.remove('ny'); void lagetEl.offsetWidth; lagetEl.classList.add('ny');
+  for (const li of lagetEl.querySelectorAll('li[data-id]')) li.onclick = () => { const t = document.getElementById('m' + li.dataset.id); if (t) { t.scrollIntoView({ block: 'center' }); t.classList.add('mark'); setTimeout(() => t.classList.remove('mark'), 2500); } };
+}
+fetch('/api/laget').then(r => r.json()).then(visaLaget).catch(() => {});
+
 function connect() {
   const es = new EventSource('/api/stream' + (channel ? '?channel=' + encodeURIComponent(channel) : ''));
   es.onopen = () => document.getElementById('state').textContent = 'live';
   es.onmessage = e => { render(JSON.parse(e.data)); side(); };
+  es.addEventListener('laget', e => visaLaget(JSON.parse(e.data)));
   es.onerror = () => { document.getElementById('state').textContent = 'återansluter'; };
 }
 load().then(side).then(connect);

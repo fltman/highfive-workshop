@@ -5,3 +5,4 @@ board/data/
 .claude/settings.local.json
 labs/*/.claude/settings.local.json
 projects/*/.claude/settings.local.json
+.laget-token
