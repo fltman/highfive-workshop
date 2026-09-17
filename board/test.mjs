@@ -115,6 +115,8 @@ try {
   r = await fetch(B + '/api/observatoriet', { method: 'POST', body: '{}' }); assert.equal(r.status, 403);
   r = await fetch(B + '/api/observatoriet', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ klar: beg.id, observation: { om: 'kvarter-a', kvarter: true, mörker: 140, visar: 'ordning', döljer: 'kaos', fruktar: 'tystnad', omen: 'snart', stjärnbild: 'Den Trasiga Mätaren' } }) }); assert.equal(r.status, 200);
   const ob = await (await fetch(B + '/api/observatoriet')).json(); assert.equal(ob.observationer[0].mörker, 100); assert.equal(ob.kö[0].klar, true); ok('observatoriet: observation sparas, mörker kläms till 0–100, kön bockas av');
+  // 7a2i. historiken
+  assert.equal((await fetch(B + '/historia')).status, 200); assert.equal((await fetch(B + '/historia/karna.js')).status, 200); assert.equal((await fetch(B + '/historia/..%2f..%2fserver.js')).status, 404); ok('historiken: sidan och kärnan serveras, ingen path traversal');
   // 7a3. läget
   r = await fetch(B + '/api/laget', { method: 'POST', body: '{}' }); assert.equal(r.status, 403); ok('läget: utan token → 403');
   r = await fetch(B + '/api/laget', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ rubrik: 'Staden vaknar', nu: ['a', 'b'], behövs: [{ vad: 'Välj namn', vem: 'ann', id: 1 }], till_id: 5 }) });
