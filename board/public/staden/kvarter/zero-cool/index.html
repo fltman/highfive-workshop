@@ -338,7 +338,7 @@
     <div class="status" id="smaltan-ton">·</div>
   </header>
 
-  <div class="fraga">stålverket som bara tar betalt i SnakeCoins, en valuta vi ger ut själva</div>
+  <div class="fraga" id="smaltan-fraga">eget kraftverk, egen valuta: inget pris i bokslutet är satt av någon annan</div>
 
   <div class="bocker">
     <div class="bok egen">
@@ -582,11 +582,16 @@ function ritaSmältan(sm) {
   el('bok-egen').textContent = '+' + e.resultat.toLocaleString('sv-SE');
   el('bok-andras').textContent = a.resultat.toLocaleString('sv-SE');
   el('bok-kurs').textContent = 'kurs ' + e.kurs + ' · satt av oss själva';
-  el('bok-kostnad').textContent = 'el ' + a.varav_el + ' · malm ' + a.varav_malm + ' · underhåll ' + a.varav_underhåll;
-  el('smaltan-ton').textContent = e.ton + ' ton smält';
+  el('bok-kostnad').textContent = (sm.självförsörjande ? 'el 0 (vi köper ingen) · ' : 'el ' + a.varav_el + ' · ')
+    + 'malm ' + a.varav_malm + ' · underhåll ' + a.varav_underhåll;
+  el('smaltan-ton').textContent = e.ton + ' ton · eget kraftverk ' + (sm.eget_kraftverk ? sm.eget_kraftverk.energi_producerad : 0);
   const st = el('smaltan-status');
-  st.textContent = sm.stopp ? 'stoppat' : sm.igång ? 'i drift' : 'bandet står';
-  st.className = 'stampel' + (sm.stopp ? '' : sm.igång ? ' klar' : ' vilar');
+  st.textContent = sm.stopp ? 'stoppat' : sm.självförsörjande ? 'självförsörjande' : 'i drift';
+  st.className = 'stampel' + (sm.stopp ? '' : ' klar');
+  // Staden kan vara mörk medan bandet går. Det ska synas att det inte är styrka.
+  el('smaltan-fraga').textContent = sm.självförsörjande
+    ? 'eget kraftverk: stadens elpris ' + (sm.stadens_elpris ?? '·') + ' rör oss inte längre — bara alla andra'
+    : 'stålverket som bara tar betalt i SnakeCoins';
   el('smaltan-logg').textContent = sm.stopp
     ? 'stopp: ' + sm.stopp.skäl + ', obetalt ' + sm.stopp.obetalt
     : (sm.logg && sm.logg[0] ? sm.logg[0].vad : 'bandet går');
