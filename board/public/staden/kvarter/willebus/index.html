@@ -373,6 +373,17 @@
     document.getElementById('bjHit').disabled = !spelar;
     document.getElementById('bjStand').disabled = !spelar;
 
+    // Blackjack
+    const bj = s.bj || {};
+    const spelar = bj.status === 'spelar';
+    renderKort('bjGivar', spelar ? [bj.givarhand && bj.givarhand[0], '🂠'] : (bj.givarhand || []));
+    renderKort('bjSpelar', bj.spelarhand || []);
+    document.getElementById('bjGivarV').textContent = spelar ? '' : (bj.givarVärde || '');
+    document.getElementById('bjSpelarV').textContent = bj.spelarVärde || '';
+    document.getElementById('bjMsg').textContent = bj.resultat || (spelar ? 'Din tur — Hit eller Stanna.' : 'Tryck "Nytt bord" för att spela.');
+    document.getElementById('bjHit').disabled = !spelar;
+    document.getElementById('bjStand').disabled = !spelar;
+
     document.getElementById('status').innerHTML = s.harJakt
       ? '🚨 Razzia! Grip, styr eller vadslå — hela rummet mot en bil.'
       : (w > 0 ? 'Läget svalnar…' : 'Kasinot är öppet. Spela, eller sätt igång en kupp!');
@@ -411,6 +422,10 @@
       tick();
     }, 700);
   };
+
+  document.getElementById('bjNy').onclick = () => POST('/bj-ny');
+  document.getElementById('bjHit').onclick = () => POST('/bj-hit');
+  document.getElementById('bjStand').onclick = () => POST('/bj-stand');
 
   document.querySelectorAll('.rbtn').forEach(b => b.onclick = async () => {
     if (rulettSpinnar) return; rulettSpinnar = true;
