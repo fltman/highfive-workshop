@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ateljén</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#12151a; --line:#1f242c; --fg:#e6e8eb; --dim:#7d8590; --accent:#ffb454; }
+  * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 ui-monospace, Menlo, monospace; padding:10px; }
+  header { display:flex; gap:8px; align-items:baseline; margin-bottom:8px; } header b { color:var(--accent); letter-spacing:.1em; } header span { color:var(--dim); font-size:11px; }
+  #g { display:grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap:8px; }
+  figure { margin:0; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; cursor:zoom-in; }
+  figure img { width:100%; aspect-ratio:1; object-fit:cover; display:block; } figcaption { padding:4px 6px; color:var(--dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  figcaption b { color:var(--fg); font-weight:500; }
+  .tom { color:var(--dim); padding:18px 4px; line-height:1.6; } code { background:var(--panel); padding:1px 5px; border-radius:4px; color:var(--fg); }
+  #stor { position:fixed; inset:0; background:rgba(0,0,0,.92); display:none; place-items:center; cursor:zoom-out; padding:10px; } #stor img { max-width:100%; max-height:88vh; border-radius:8px; } #stor p { color:var(--dim); text-align:center; margin:8px 0 0; }
+</style></head><body>
+<header><b>ATELJÉN</b><span>bilder på beställning · <span id="n"></span></span></header>
+<div id="g"></div><div id="stor"><div><img><p></p></div></div>
+<script>
+const g = document.getElementById('g'), stor = document.getElementById('stor'); let sist = '';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function ladda() {
+  const b = await fetch('/api/bilder').then(r => r.json()).catch(() => []); const nyckel = b.map(x => x.url + x.ts).join();
+  if (nyckel === sist) return; sist = nyckel; document.getElementById('n').textContent = b.length + ' bilder';
+  if (!b.length) { g.innerHTML = '<div class="tom">Beställ en bild till ert kvarter på pulsen:<br><code>tools/board.sh emit bildbeställning \'{"namn":"skylt","prompt":"en neonskylt för ett bageri"}\'</code><br>Ateljén svarar med <code>bild-klar</code> och en url. Tre bilder per team.</div>'; return; }
+  b.sort((x, y) => (x.fil === 'plats.jpg') - (y.fil === 'plats.jpg') || y.ts - x.ts);
+  g.innerHTML = b.slice(0, 30).map(x => `<figure data-url="${esc(x.url)}" data-p="${esc(x.prompt)}"><img src="${esc(x.url)}?${x.ts}" loading="lazy" alt=""><figcaption><b>${esc(x.team)}</b> ${esc(x.fil.replace(/\.\w+$/, ''))}</figcaption></figure>`).join('');
+  for (const f of g.children) f.onclick = () => { stor.querySelector('img').src = f.dataset.url; stor.querySelector('p').textContent = f.dataset.p; stor.style.display = 'grid'; };
+}
+stor.onclick = () => stor.style.display = 'none'; ladda(); setInterval(ladda, 5000);
+</script></body></html>

@@ -48,6 +48,18 @@ Välj en, flera, eller hitta på en fjärde. De krockar inte, de delar buss.
 2. **Tanken som vandrar genom staden.** En `{typ:"fråga"}` kommer in. Kvarter är attention-huvuden som svarar `{typ:"delsvar", nyttolast:{text, motivering}, orsak}` med var sin vinkel: fakta, ton, motargument, siffror. **Sammanfogaren** väntar högst N sekunder, sätter `fitness` 0..1 på varje delsvar (den bedömer, avsändaren självskattar inte), väljer i stället för att blanda och postar `{typ:"svar"}`. Det som föll postas som `{typ:"kyrkogård", nyttolast:{delsvar, varför}}`. **Kritikern** får skicka ett varv till. Spridningen i fitness är stadens osäkerhet. Kyrkogården är stadens minne. `team-jacob` har tingat sammanfogaren och kyrkogården.
 3. **Jakten.** En kupp höjer wanted-nivån. En jakt är ett objekt som ägs av ett kvarter i taget och lämnas över med `{typ:"överlämning", nyttolast:{vad, wanted, riktning}, orsak}`. Först till kvarn tar emot. Tar ingen emot svalnar den där den står, ett steg per minut.
 
+### Ateljén: beställ bilder till ert kvarter
+
+Agenterna får beställa bilder. Posta en beställning på pulsen, Ateljén målar den och svarar med en url på samma origin som er frontend:
+
+```bash
+tools/board.sh emit bildbeställning '{"namn":"skylt","prompt":"en neonskylt för ett bageri som aldrig stänger"}'
+# → {typ:"bild-klar", nyttolast:{till, namn, url:"/bilder/<team>/skylt.jpg", prompt}, orsak:<er beställning>}   efter cirka 20 sekunder
+# → eller {typ:"bild-nekad", nyttolast:{till, skäl}}
+```
+
+Från ett plugin: `board.emit('bildbeställning', { namn, prompt })` och lyssna på `bild-klar` där `nyttolast.till` är ert team. Alla bilder får stadens stil (nattlig nordisk småstad, mörkt med bärnstensljus), så beskriv motivet, inte stilen. Ingen text i bilder, inga verkliga personer. **Tre bilder per team**, för varje bild kostar riktiga pengar: välj dem som gör mest för ert kvarter. `GET /api/bilder` listar allt som målats. Samma namn igen skriver över bilden.
+
 ## Hur ett team bidrar
 
 1. Ropa i `#bygge` vilket kvarter ni tar och vilka `typ` ni tänker posta och lyssna på. Det är hela samordningen.
