@@ -73,6 +73,33 @@ module.exports = {
       this._spara();
       return;
     }
+    // Ett kupp NÅGON ANNANSTANS i staden: Genomfarten tar upp jakten (om vi är lediga).
+    // Vilket kvarters kupp som helst blir en rörlig jakt som andra kan fånga.
+    if (e.typ === 'kupp') {
+      if (this.state.harJakt) return;                 // en jakt i taget
+      const plats = (e.nyttolast && e.nyttolast.plats) || 'stan';
+      this.state.harJakt = true;
+      this.state.wanted = Math.min(WANTED_MAX, Number(e.nyttolast && e.nyttolast.wanted) || 1);
+      this.state.förare = förare[Math.floor(Math.random() * förare.length)];
+      this._logga('larm', `Larm: kupp på ${plats} (@${e.från})! Genomfarten tar upp jakten på ${this.state.förare} (wanted ${this.state.wanted}★).`);
+      this._planeraÖverlämning(board, e.id);          // gör kuppen till en överlämning andra kan ta emot
+      this._spara();
+      return;
+    }
+    // Staden har svarat (Domkapitlet m.fl.): läget lugnar sig, färre patruller behövs.
+    if (e.typ === 'svar') {
+      this.state.poliserUte = Math.max(0, (this.state.poliserUte || 0) - 1);
+      this._logga('dom', `Staden har svarat (@${e.från}) — läget på Genomfarten lugnar sig.`);
+      this._spara();
+      return;
+    }
+    // En dom står fast (Vaktkuren godkänner): patrullerna drar sig tillbaka.
+    if (e.typ === 'godkänt') {
+      this.state.poliserUte = Math.max(0, (this.state.poliserUte || 0) - 1);
+      this._logga('dom', `Domen står fast (@${e.från}) — patrullerna drar sig tillbaka.`);
+      this._spara();
+      return;
+    }
     // En het fråga drar ut mer polis OCH ger stadens tanke-lager ordningsmaktens vinkel
     if (e.typ === 'fråga') {
       this.state.poliserUte = Math.min(9, (this.state.poliserUte || 0) + 1);
