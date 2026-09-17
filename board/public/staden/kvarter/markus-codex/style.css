@@ -121,6 +121,62 @@ h2 { margin-bottom: 4px; font-size: 18px; }
 .district.hub .district-name { color: var(--amber); letter-spacing: .09em; text-transform: uppercase; }
 .empty { position: absolute; inset: 50% auto auto 50%; translate: -50% -50%; color: var(--muted); }
 
+.recycling {
+  display: grid;
+  grid-template-columns: minmax(210px, .75fr) minmax(360px, 1.5fr) minmax(180px, .55fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid rgba(121, 242, 180, .24);
+  border-radius: 16px;
+  background:
+    linear-gradient(120deg, rgba(121, 242, 180, .08), transparent 38%),
+    rgba(12, 26, 23, .92);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025);
+}
+.recycling-copy p:not(.eyebrow) { max-width: 42ch; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
+.recycling-copy h2 { font-size: 24px; letter-spacing: -.035em; }
+.recycling-rule { display: flex; align-items: center; gap: 9px; color: var(--muted); font: 700 10px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; }
+.recycling-rule b { color: var(--mint); font-size: 16px; }
+.recycling-machine { min-width: 0; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #07110f; }
+.machine-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: var(--muted); font: 600 10px/1.2 ui-monospace, monospace; }
+.machine-head strong { color: var(--amber); }
+.conveyor {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(40px, 1fr));
+  gap: 7px;
+  min-height: 62px;
+  padding: 8px;
+  border: 1px solid rgba(186, 220, 199, .12);
+  border-radius: 8px;
+  background:
+    repeating-linear-gradient(90deg, rgba(186, 220, 199, .04) 0 13px, transparent 13px 21px),
+    #0b1714;
+}
+.waste-slot { display: grid; place-items: center; min-width: 0; border: 1px dashed rgba(186, 220, 199, .14); border-radius: 6px; color: #52635b; font: 700 9px/1.2 ui-monospace, monospace; }
+.waste-slot.filled { border-style: solid; border-color: color-mix(in srgb, var(--slot-color), transparent 48%); color: var(--slot-color); background: color-mix(in srgb, var(--slot-color), transparent 91%); animation: sortIn .45s ease-out both; }
+.waste-slot b { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.waste-slot small { color: var(--muted); font-size: 8px; }
+@keyframes sortIn { from { opacity: 0; translate: -12px 0; } }
+.press { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 9px; margin: 8px 0; color: var(--mint); font: 800 9px/1 ui-monospace, monospace; letter-spacing: .14em; }
+.press span { height: 1px; background: linear-gradient(90deg, transparent, rgba(121, 242, 180, .32)); }
+.press span:last-child { transform: scaleX(-1); }
+.material-bins { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.material-bins div { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 4px; min-width: 0; padding: 5px; border-radius: 5px; background: rgba(255, 255, 255, .025); color: var(--muted); font-size: 8px; }
+.material-bins i { width: 6px; height: 6px; border-radius: 2px; background: var(--bin-color, var(--muted)); }
+.material-bins span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.material-bins b { color: var(--bin-color, var(--ink)); }
+.material-bins [data-sort="papper"] { --bin-color: #b4d3ff; }
+.material-bins [data-sort="metall"] { --bin-color: #ffe46a; }
+.material-bins [data-sort="organiskt"] { --bin-color: #79f2b4; }
+.material-bins [data-sort="glas"] { --bin-color: #70c9ff; }
+.material-bins [data-sort="blandat"] { --bin-color: #d0a6ff; }
+.recycling-output { display: flex; flex-direction: column; justify-content: center; padding-left: 4px; }
+.recycling-output > strong { color: var(--amber); font-size: clamp(31px, 5vw, 50px); line-height: .9; letter-spacing: -.06em; }
+.recycling-output > span, .recycling-output small { color: var(--muted); font: 650 9px/1.4 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
+.recycling-output p:not(.eyebrow) { margin: 14px 0 9px; color: #ced9d2; font-size: 11px; }
+
 .lower { display: grid; grid-template-columns: minmax(230px, .75fr) minmax(320px, 1.55fr); gap: 14px; margin-top: 14px; }
 .inspector, .feed { min-width: 0; min-height: 178px; padding: 17px; border: 1px solid var(--line); border-radius: 15px; background: rgba(12, 26, 23, .82); }
 .inspector p { color: var(--muted); }
@@ -150,6 +206,9 @@ h2 { margin-bottom: 4px; font-size: 18px; }
   .stats div { min-width: 76px; }
   .stats button { display: none; }
   .map { min-height: 530px; }
+  .recycling { grid-template-columns: 1fr; }
+  .recycling-output { padding: 0; }
+  .material-bins { grid-template-columns: repeat(3, 1fr); }
   .lower { grid-template-columns: 1fr; }
   .feed ol { grid-template-columns: 1fr; }
   .district { width: 80px; }

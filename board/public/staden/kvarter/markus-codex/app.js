@@ -5,7 +5,7 @@ const VISIBLE_EDGES = 18;
 const TEAM_META = {
   torget: { icon: '🏛️', tone: '#ffc66d', title: 'Torget' },
   markus: { icon: '🛡️', tone: '#79f2b4', title: 'Vaktkuren' },
-  'markus-codex': { icon: '🗺️', tone: '#79f2b4', title: 'Stadskartan' },
+  'markus-codex': { icon: '♻️', tone: '#79f2b4', title: 'Stadskartan & Återbruket' },
   mohamad: { icon: '🚪', tone: '#70c9ff', title: 'Frågeporten' },
   highfive: { icon: '🗄️', tone: '#d0a6ff', title: 'Arkivet' },
   willebus: { icon: '🚓', tone: '#ff7698', title: 'Genomfarten' },
@@ -23,7 +23,10 @@ const TYPE_COLORS = {
   fråga: '#70c9ff', delsvar: '#b4d3ff', svar: '#d0a6ff', godkänt: '#79f2b4',
   kyrkogård: '#a4aaa7', angrepp: '#ff806c', kupp: '#ff7698', överlämning: '#ff9d70',
   'strömavbrott': '#ffe46a', 'elpris-steg': '#ffc66d', 'socker-slut': '#ff91bf',
-  'godis-klart': '#ff91bf', produktion: '#ff91bf'
+  'godis-klart': '#ff91bf', produktion: '#ff91bf', materialparti: '#79f2b4'
+};
+const MATERIAL_COLORS = {
+  papper: '#b4d3ff', metall: '#ffe46a', organiskt: '#79f2b4', glas: '#70c9ff', blandat: '#d0a6ff'
 };
 
 const state = {
@@ -278,6 +281,67 @@ function updateStats() {
   $('#chainCount').textContent = String(Math.min(state.edges.length, VISIBLE_EDGES));
 }
 
+function renderRecycling(data) {
+  const återbruk = data?.återbruk;
+  if (!återbruk) return;
+  const kö = Array.isArray(återbruk.kö) ? återbruk.kö : [];
+  const band = $('#recyclingQueue');
+  const fragment = document.createDocumentFragment();
+  for (let index = 0; index < 5; index += 1) {
+    const källa = kö[index];
+    const slot = document.createElement('div');
+    slot.className = `waste-slot${källa ? ' filled' : ''}`;
+    if (källa) {
+      slot.style.setProperty('--slot-color', MATERIAL_COLORS[källa.sort] || MATERIAL_COLORS.blandat);
+      const id = document.createElement('b');
+      id.textContent = `#${källa.id}`;
+      const typ = document.createElement('small');
+      typ.textContent = källa.typ;
+      slot.title = `${källa.från}: ${källa.typ} → ${källa.sort}`;
+      slot.append(id, typ);
+    } else {
+      slot.textContent = String(index + 1);
+    }
+    fragment.append(slot);
+  }
+  band.replaceChildren(fragment);
+
+  const antal = { papper: 0, metall: 0, organiskt: 0, glas: 0, blandat: 0 };
+  kö.forEach(källa => { antal[källa.sort] = (antal[källa.sort] || 0) + 1; });
+  $('#binPaper').textContent = String(antal.papper);
+  $('#binMetal').textContent = String(antal.metall);
+  $('#binOrganic').textContent = String(antal.organiskt);
+  $('#binGlass').textContent = String(antal.glas);
+  $('#binMixed').textContent = String(antal.blandat);
+  $('#recyclingCount').textContent = String(återbruk.väntar || 0);
+  $('#recyclingBatches').textContent = String(återbruk.skapadePartier || 0);
+  $('#recyclingTotal').textContent = `${återbruk.insamladeSlut || 0} kedjeändar insamlade`;
+
+  if (återbruk.nästaOmMs > 0 && återbruk.väntar >= 5) {
+    $('#recyclingState').textContent = `Pressen kyls · ${Math.ceil(återbruk.nästaOmMs / 1000)} s`;
+  } else if (återbruk.väntar >= 5) {
+    $('#recyclingState').textContent = 'Parti redo för pressning';
+  } else {
+    $('#recyclingState').textContent = `${återbruk.behövs} till nästa materialparti`;
+  }
+
+  const parti = återbruk.senasteParti;
+  const källor = Array.isArray(parti?.källor) ? parti.källor : [];
+  $('#recyclingLatest').textContent = parti
+    ? `#${parti.id} · ${parti.mängd} enheter ${parti.sort} · källor ${källor.map(id => `#${id}`).join(', ')}`
+    : 'Inget materialparti ännu.';
+}
+
+async function loadRecycling() {
+  try {
+    const response = await fetch('/t/markus-codex/status');
+    if (!response.ok) throw new Error('status saknas');
+    renderRecycling(await response.json());
+  } catch {
+    $('#recyclingState').textContent = 'Återbrukets backend är inte tillgänglig';
+  }
+}
+
 async function load() {
   const [paths, events] = await Promise.all([
     fetch('/api/kvarter').then(response => response.ok ? response.json() : Promise.reject(new Error('kvarteren svarade inte'))),
@@ -327,7 +391,11 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(drawBaseRoads, 120);
 });
 
-load().then(connect).catch(error => {
+load().then(() => {
+  connect();
+  loadRecycling();
+  setInterval(loadRecycling, 4000);
+}).catch(error => {
   statusEl.classList.add('offline');
   $('#statusText').textContent = error.message;
   $('#emptyState').hidden = false;
