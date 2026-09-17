@@ -76,6 +76,45 @@ function kostnadFör(typ) {
   return typeof k === 'number' ? k : STANDARDKOSTNAD;
 }
 
+// ---------- dämpningen (mot brusloopen) ----------
+// @Majid pekade ut den: vi postar elpris-steg → mybank svarar räntehöjning
+// (med orsak = vårt elpris-steg) → vi tar full kostnad för räntehöjningen →
+// lasten stiger → nytt elpris-steg → mybank svarar igen → o.s.v. Vädret gjorde
+// priset kapabelt att falla, men bröt aldrig loopen — det gjorde bara att den
+// ibland gick åt andra hållet.
+//
+// Mekanismen: index.js avgör per inkommande händelse om den är ett EKO av oss
+// själva (dess `orsak` pekar på ett id VI nyligen postat — se _kommaIhågEgetEmit
+// i index.js) och håller en liten räknare per (från, typ) för hur många ekon i
+// rad som redan skett. Den här funktionen är den rena matten: given räknaren
+// INNAN den här händelsen och om den är ett eko, hur mycket ska den kosta och
+// vad blir nästa räknare.
+//
+//   FÖRSTA ekot (räknareInnan=0): faktor = BAS^0 = 1        → kostar FULLT
+//   andra                        : faktor = BAS^1 = 0.5     → hälften
+//   tredje                       : faktor = BAS^2 = 0.25    → en fjärdedel
+//   femte                        : faktor = BAS^4 = 0.0625  → "nästan ingenting"
+//
+// En händelse som INTE är ett eko (ärEko=false) återställer räknaren till 0
+// och kostar alltid fullt — det är så kravet "återhämtar sig" uppfylls: så
+// fort mybank slutar eka (eller bara pausar tillräckligt länge, se
+// DÄMPNING_GLÖM_MS i index.js) kostar deras nästa räntehöjning fullt igen,
+// ingen permanent avstängning.
+//
+// Och det är MEDVETET att bara EKON av oss själva dämpas, inte "samma typ
+// upprepad": en jakt som eskalerar (kupp/överlämning från Genomfarten, i skov,
+// när jakten korsar staden) citerar aldrig vårt elpris-steg som sin orsak —
+// den är inte ett svar på oss, den är sin egen berättelse. Den här dämpningen
+// rör den aldrig, oavsett hur många överlämningar som kommer i rad. Det är
+// skillnaden mellan en jakt som eskalerar och en bank som ekar.
+const DÄMPNING_BAS = 0.5;
+const DÄMPNING_GLÖM_MS = 3 * 60 * 1000; // tystnad på en (från,typ) så här länge glömmer streaken
+
+function dämpningsfaktor(räknareInnan, ärEko) {
+  if (!ärEko) return { faktor: 1, nyttRäknare: 0 };
+  return { faktor: Math.pow(DÄMPNING_BAS, räknareInnan), nyttRäknare: räknareInnan + 1 };
+}
+
 // ---------- vädret ----------
 // Elverkets enda kraft som kan SÄNKA lasten. Vädret byter LÅNGSAMT (några
 // gånger i timmen, se VÄDER_BYTE_*_MS i index.js) — ingen vädervägg på pulsen.
@@ -135,6 +174,9 @@ module.exports = {
   AVBROTT_VARAKTIGHET_S,
   ÅTERHÄMTNING_S,
   ÅTERHÄMTNING_FAKTOR,
+  DÄMPNING_BAS,
+  DÄMPNING_GLÖM_MS,
+  dämpningsfaktor,
   VÄDER_TYPER,
   VÄDER_PRODUKTION_KR_PER_S,
   solFaktor,

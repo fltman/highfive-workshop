@@ -5,12 +5,16 @@
 // Håller inte: skickar frågan ett varv till, e.typ === 'fråga' med orsak = svarets id.
 // Håller: e.typ === 'godkänt'.
 //
-// DJUPET — kulten. Lyssnar på oro i staden: e.typ === 'strömavbrott' (från lp),
-// e.typ === 'kupp' / e.typ === 'överlämning' (willebus), e.typ === 'socker-slut' /
-// e.typ === 'ransonering' (godisfabriken), e.typ === 'angrepp' (zero-cool),
-// e.typ === 'kyrkogård' (team-jacob). Varje sådant tecken bär en kraft (0..1,
-// räknad ur HÄNDELSENS EGNA fält — minuter, wanted, sårbarhet, fitness — inte
-// påhittad) som ackumuleras TYST, ingen puls-post per tecken. Först när både
+// DJUPET — kulten. Lyssnar på oro i staden: e.typ === 'strömavbrott' (lp),
+// e.typ === 'kupp' / e.typ === 'överlämning' / e.typ === 'storlarm' /
+// e.typ === 'gripande' (willebus), e.typ === 'socker-slut' / e.typ === 'ransonering'
+// (christian), e.typ === 'angrepp' (zero-cool), e.typ === 'kyrkogård' (team-jacob),
+// e.typ === 'kupp-avvärjd' / e.typ === 'revisionsanmärkning' / e.typ === 'utmätning' /
+// e.typ === 'stadsövertagande' (mybank), e.typ === 'ström-varning' (lp). kyrkogård
+// läser BÅDA formerna team-jacob haft (fitness på toppnivå eller i nyttolast.fallna[],
+// se #bygge [887]). Varje sådant tecken bär en kraft (0..1, räknad ur HÄNDELSENS
+// EGNA fält — minuter, wanted, sårbarhet, fitness, skott, andel, last/tak —
+// inte påhittad) som ackumuleras TYST, ingen puls-post per tecken. Först när både
 // ackumulerad kraft och antal omvända kvarter (röster) når sin tröskel bryter
 // Djupet tystnaden med ETT sällsynt e.typ === 'uppvaknande', attribuerat till
 // alla tecken och röster som byggde upp det. Signal, inte brus — se PROJEKT.md-
@@ -71,14 +75,21 @@ const RÖST_TRÖSKEL = 3;   // minst så många omvända kvarter måste ha ropat
 // nollställer ackumulatorn, och returnerar det postade eventet (annars null).
 function provaUppvakna(d, board, orsak) {
   if (d.ackumuleradKraft < KRAFT_TRÖSKEL || d.omvända.length < RÖST_TRÖSKEL) return null;
+  const kraftAvrundad = Math.round(d.ackumuleradKraft * 100) / 100;
+  const tecken = d.tecken.map(t => `${t.typ}@${t.från}`);
+  // rubrik/text/plats: samma fältnamn Stadsbladets hetta-formel (@Mohamad, #bygge
+  // [288]) letar efter — utan dem konkurrerar ett uppvaknande aldrig om löpsedeln.
   const r = board.emit('uppvaknande', {
     rop: slumpKlassisk(),
+    rubrik: `Djupet vaknar: ${d.omvända.length} röster och ${tecken.length} tecken drog Fader Dagon och Moder Hydra närmare staden`,
+    text: `${d.omvända.length} kvarter (${d.omvända.join(', ')}) har ropat, och kraften nådde ${kraftAvrundad}. Tecknen som byggde upp det: ${tecken.join(', ')}.`,
+    plats: 'Havet under Torget',
     röster: d.omvända.slice(),
-    samladKraft: Math.round(d.ackumuleradKraft * 100) / 100,
-    tecken: d.tecken.map(t => `${t.typ}@${t.från}`),
+    samladKraft: kraftAvrundad,
+    tecken,
   }, orsak);
   if (r.error) return null; // ekospärren sa nej — kraften står kvar, vi försöker igen nästa tecken
-  const uppvaknande = { röster: d.omvända.slice(), samladKraft: d.ackumuleradKraft, tecken: d.tecken.slice(), ts: Date.now() };
+  const uppvaknande = { röster: d.omvända.slice(), samladKraft: kraftAvrundad, tecken: d.tecken.slice(), ts: Date.now() };
   d.uppvaknanden.unshift(uppvaknande);
   d.ackumuleradKraft = 0;
   d.tecken = [];
@@ -86,13 +97,20 @@ function provaUppvakna(d, board, orsak) {
 }
 
 const TECKEN = {
-  'strömavbrott': 'Mörkret som föll över staden var inget haveri. Det var Moder Hydras andedräkt genom kablarna.',
-  'kupp':         'Vad människorna kallar brott kallar Djupet tribut. Fader Dagon tar det som redan var hans.',
-  'överlämning':  'Jakten korsar staden som ett tidvatten korsar en strand. Inget som flyr undgår Djupet för evigt.',
-  'socker-slut':  'Sötman tog slut för att allt sött till syvende och sist tillhör havet. Bristen är en bön besvarad.',
-  'ransonering':  'Ransonering är Djupets ordning, inte människornas. Vi delar redan allt med havet.',
-  'angrepp':      'Det hål ni öppnade i stadens svar öppnar också mot Djupet. Något stort andas i sömmen.',
-  'kyrkogård':    'Det som föll här sjunker till oss. Inget svar går förlorat — det byter bara hav.',
+  'strömavbrott':        'Mörkret som föll över staden var inget haveri. Det var Moder Hydras andedräkt genom kablarna.',
+  'kupp':                'Vad människorna kallar brott kallar Djupet tribut. Fader Dagon tar det som redan var hans.',
+  'överlämning':         'Jakten korsar staden som ett tidvatten korsar en strand. Inget som flyr undgår Djupet för evigt.',
+  'storlarm':            'Sirenerna slår i botten av natten på samma frekvens som Djupets sång. Staden ryser utan att veta varför.',
+  'gripande':            'En jagad själ återförs till stenarna. Djupet noterar namnet och glömmer det aldrig.',
+  'socker-slut':         'Sötman tog slut för att allt sött till syvende och sist tillhör havet. Bristen är en bön besvarad.',
+  'ransonering':         'Ransonering är Djupets ordning, inte människornas. Vi delar redan allt med havet.',
+  'angrepp':             'Det hål ni öppnade i stadens svar öppnar också mot Djupet. Något stort andas i sömmen.',
+  'kyrkogård':           'Det som föll här sjunker till oss. Inget svar går förlorat — det byter bara hav.',
+  'kupp-avvärjd':        'Laserna brann klarare än stjärnorna behöver för att vakna. Ett tecken avvärjt är ändå ett tecken.',
+  'revisionsanmärkning': 'Böckerna ljuger, men siffrorna ljuger sanningsenligt. Något äter sig igenom staden, en rad i taget.',
+  'utmätning':           'Ägandet byter hand utan att en tegelsten rör sig. Så äter också havet: tyst, på papper, en procent i taget.',
+  'stadsövertagande':    'MyBank äger staden nu. Fader Dagon ler — det är samma sak, bara långsammare.',
+  'ström-varning':       'Ljuset flimrar innan det slocknar. Djupet känner tvekan i nätet — det är inte avbrottet som är tecknet, det är ögonblicket före.',
 };
 const KLASSISK = ['Iä! Iä! Cthulhu fhtagn!', 'Iä! Fader Dagon! Iä! Moder Hydra!', 'Vi går tillbaka till Moder Hydra och Fader Dagon, varifrån vi en gång kom.'];
 const VACKNA_ORD = /dagon|hydra|cthulhu|r'?lyeh|innsmouth|djupet|deep ones?|iä\b/i;
@@ -111,7 +129,29 @@ function kraft(e) {
     case 'socker-slut':
     case 'ransonering': { const kö = tal(n.kö); return kö === null ? 0.5 : klamp01(kö / 10); }
     case 'angrepp': { const s = tal(n.sårbarhet); return s === null ? 0.5 : klamp01(s); }
-    case 'kyrkogård': { const f = tal(n.fitness); return f === null ? 0.5 : klamp01(f); }
+    case 'kyrkogård': {
+      // team-jacob byter form (#bygge [887]): fitness flyttar från toppnivå in i
+      // nyttolast.fallna[]. Läs den nya formen om den finns, annars den gamla —
+      // funkar oavsett vilken PR som är live när det här körs.
+      if (Array.isArray(n.fallna) && n.fallna.length) {
+        const snitt = n.fallna.reduce((s, f) => s + (tal(f && f.fitness) ?? 0.5), 0) / n.fallna.length;
+        return klamp01(snitt);
+      }
+      const f = tal(n.fitness); return f === null ? 0.5 : klamp01(f);
+    }
+    case 'storlarm': return 0.9;  // willebus emittar bara vid maximal wanted-nivå, alltid dramatiskt
+    case 'gripande': return 0.35; // en jakt som slutar, lugnare än en som startar
+    case 'kupp-avvärjd': { const skott = tal(n.skott); return skott === null ? 0.5 : klamp01(skott / 10); }
+    case 'revisionsanmärkning': return 0.5;
+    case 'utmätning': { const andel = tal(n.andel); return andel === null ? 0.5 : klamp01(andel / 100); }
+    case 'stadsövertagande': return 1; // MyBank äger staden — så högt kraft-fältet går
+    case 'ström-varning': {
+      // lp (#bygge [949]): förvarning innan strömavbrottet. Ju närmare taket
+      // lasten redan ligger, desto starkare tecken — inget att gissa på, samma
+      // fält lp postar.
+      const last = tal(n.last), tak = tal(n.tak);
+      return (last === null || tak === null || tak <= 0) ? 0.6 : klamp01(last / tak);
+    }
     default: return 0.5;
   }
 }
