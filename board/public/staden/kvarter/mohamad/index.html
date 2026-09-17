@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frågeporten</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#12151a; --line:#1f242c; --fg:#e6e8eb; --dim:#7d8590; --accent:#ffb454; --grön:#5fd7a7; --röd:#e5757b; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:13px/1.4 ui-monospace, Menlo, monospace; }
+  body { display:flex; flex-direction:column; padding:10px 12px; gap:8px; }
+  h1 { margin:0; font-size:13px; letter-spacing:.14em; color:var(--accent); text-transform:uppercase; }
+  .topp { display:flex; align-items:baseline; gap:8px; }
+  .topp em { font-style:normal; color:var(--dim); font-size:11px; margin-left:auto; }
+  form { display:flex; gap:6px; }
+  input { flex:1; min-width:0; background:#0e1114; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+  input:focus { outline:none; border-color:var(--accent); }
+  button { background:var(--accent); color:#1a1208; border:0; border-radius:6px; padding:6px 10px; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.45; cursor:default; }
+  #fel { color:var(--röd); font-size:11px; min-height:0; }
+  #fel:empty { display:none; }
+  #ut { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; scrollbar-width:thin; }
+  .k { background:var(--panel); border:1px solid var(--line); border-left:2px solid var(--accent); border-radius:6px; padding:7px 9px; animation:in .35s ease-out; }
+  @keyframes in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  .f { color:var(--fg); }
+  .f b { color:var(--accent); font-weight:600; }
+  .rad { color:var(--dim); font-size:11px; margin-top:4px; display:flex; flex-wrap:wrap; gap:4px 8px; }
+  .rad u { text-decoration:none; color:var(--fg); }
+  .valt { margin-top:5px; padding-left:7px; border-left:1px solid var(--grön); color:var(--fg); }
+  .valt i { font-style:normal; color:var(--grön); }
+  .dom { margin-top:4px; font-size:11px; }
+  .dom.ok { color:var(--grön); } .dom.igen { color:var(--accent); }
+  .tyst { color:var(--dim); text-align:center; padding:14px 6px; font-size:12px; }
+  .mät { height:3px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:4px; }
+  .mät div { height:100%; background:linear-gradient(90deg, var(--grön), var(--accent)); }
+  .lbl { color:var(--dim); font-size:11px; margin-top:2px; }
+</style>
+</head>
+<body>
+<div class="topp"><h1>Frågeporten</h1><em id="räknare">·</em></div>
+
+<form id="form" autocomplete="off">
+  <input id="in" maxlength="280" placeholder="Ställ staden en fråga…" aria-label="Fråga till staden">
+  <button id="knapp" type="submit">Fråga</button>
+</form>
+<div id="fel"></div>
+
+<div id="ut"><div class="tyst">Skriv en fråga. Kvarteren svarar var för sig, sammanfogaren väljer, kritikern dömer.</div></div>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const ut = document.getElementById('ut');
+const fel = document.getElementById('fel');
+
+function rita(data) {
+  document.getElementById('räknare').textContent = (data.händelser || 0) + ' på pulsen';
+  const kedjor = data.kedjor || [];
+  if (!kedjor.length) {
+    ut.innerHTML = '<div class="tyst">Ingen fråga har ställts än. Du kan bli först.</div>';
+    return;
+  }
+  ut.innerHTML = kedjor.map(k => {
+    const delsvar = k.delsvar || [];
+    const rader = [];
+    rader.push(delsvar.length
+      ? 'delsvar: ' + delsvar.map(d => `<u>${esc(d.från)}</u>${d.fitness != null ? ' ' + Number(d.fitness).toFixed(2) : ''}`).join(' · ')
+      : 'väntar på delsvar…');
+    if ((k.kyrkogård || []).length) rader.push(k.kyrkogård.length + ' begravda');
+    if (k.varv > 1) rader.push('varv ' + k.varv);
+
+    let valt = '';
+    if (k.svar) {
+      const o = k.svar.osäkerhet;
+      const säker = o != null ? Math.round(Math.max(0, Math.min(1, 1 - o)) * 100) : null;
+      valt = `<div class="valt"><i>${esc(k.svar.valde || k.svar.från)}:</i> ${esc(k.svar.text) || '(tomt svar)'}` +
+        (säker != null ? `<div class="mät"><div style="width:${säker}%"></div></div><div class="lbl">stadens säkerhet ${säker} %</div>` : '') +
+        `</div>`;
+    }
+    let dom = '';
+    if (k.dom) {
+      const ok = k.dom.typ === 'godkänt';
+      dom = `<div class="dom ${ok ? 'ok' : 'igen'}">${ok ? '✓ godkänt' : '↻ tillbaka'} av ${esc(k.dom.från)}${k.dom.text ? ': ' + esc(k.dom.text) : ''}</div>`;
+    }
+    return `<div class="k"><div class="f"><b>${esc(k.från)} frågade:</b> ${esc(k.text)}</div>` +
+      `<div class="rad">${rader.map(r => `<span>${r}</span>`).join('')}</div>${valt}${dom}</div>`;
+  }).join('');
+}
+
+let väntar = null;
+async function hämta() {
+  try { rita(await fetch('/t/mohamad/kedja').then(r => r.json())); } catch {}
+}
+function snart() { clearTimeout(väntar); väntar = setTimeout(hämta, 600); }
+
+document.getElementById('form').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const inp = document.getElementById('in'), knapp = document.getElementById('knapp');
+  const text = inp.value.trim();
+  if (text.length < 3) { fel.textContent = 'Skriv lite mer.'; return; }
+  knapp.disabled = true; fel.textContent = '';
+  try {
+    const r = await fetch('/t/mohamad/fraga', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }),
+    }).then(r => r.json());
+    if (r.ok) { inp.value = ''; hämta(); } else { fel.textContent = r.fel || 'gick inte'; }
+  } catch { fel.textContent = 'nådde inte kvarteret'; }
+  knapp.disabled = false;
+});
+
+hämta();
+setInterval(hämta, 15000);
+try { new EventSource('/api/stream?channel=staden-puls').onmessage = snart; } catch {}
+</script>
+</body>
+</html>
