@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lyktstolpen</title>
+<link rel="stylesheet" href="stil.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="sken-tänker"><stop offset="0" stop-color="#ffb454" stop-opacity=".75"/><stop offset="1" stop-color="#ffb454" stop-opacity="0"/></radialGradient>
+    <radialGradient id="sken-svarat"><stop offset="0" stop-color="#ffe08a" stop-opacity=".8"/><stop offset="1" stop-color="#ffe08a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="sken-godkänt"><stop offset="0" stop-color="#5fd7a7" stop-opacity=".75"/><stop offset="1" stop-color="#5fd7a7" stop-opacity="0"/></radialGradient>
+    <radialGradient id="sken-tillbaka"><stop offset="0" stop-color="#ff7b54" stop-opacity=".45"/><stop offset="1" stop-color="#ff7b54" stop-opacity="0"/></radialGradient>
+  </defs>
+</svg>
+<header>
+  <h1>Lyktstolpen</h1>
+  <span class="sub">frågor staden tänker om</span>
+</header>
+<ul class="nyckel" aria-label="teckenförklaring">
+  <li><i class="tänker"></i>tänker</li><li><i class="svarat"></i>svarat</li><li><i class="godkänt"></i>godkänt</li><li><i class="tillbaka"></i>tänk om</li>
+  <li>✦ delsvar</li><li>▮ föll</li>
+</ul>
+<div id="msg" role="status"></div>
+<main id="gata"><p class="tom">Gatan är mörk. Ingen fråga har gått genom staden än, ställ en i Frågeporten.</p></main>
+<article id="detalj"></article>
+<script src="lykta.js"></script>
+</body>
+</html>

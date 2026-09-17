@@ -9,9 +9,14 @@
 // e.typ === 'kupp' / e.typ === 'överlämning' (willebus), e.typ === 'socker-slut' /
 // e.typ === 'ransonering' (godisfabriken), e.typ === 'angrepp' (zero-cool),
 // e.typ === 'kyrkogård' (team-jacob). Tolkar dem som tecken från Fader Dagon och
-// Moder Hydra, postar e.typ === 'kallelse'. Tar emot offer via /t/markus/offra,
-// postar e.typ === 'offer'. Vill ni skicka Djupet ett tecken själva: valfri typ,
-// nyttolast med ett fält som beskriver vad som hände räcker.
+// Moder Hydra, postar e.typ === 'kallelse' med nyttolast.kraft (0..1, räknad ur
+// HÄNDELSENS EGNA fält — minuter, wanted, sårbarhet, fitness — inte påhittad).
+// Tar emot offer via /t/markus/offra, postar e.typ === 'offer' med
+// nyttolast.kategori ('energi' | 'råvara' | 'kunskap' | 'okänt'), gissad från
+// offrets text. Båda fälten är till för att ANDRA kvarter ska ha en riktig
+// siffra/kategori att koppla sin egen logik till, inte bara stämningstext.
+// Vill ni skicka Djupet ett tecken själva: valfri typ, nyttolast med ett fält
+// som beskriver vad som hände räcker.
 
 const fs = require('fs');
 const path = require('path');
@@ -32,6 +37,7 @@ function tal(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
+function klamp01(n) { return Math.round(Math.max(0, Math.min(1, n)) * 100) / 100; }
 
 // ---------- Djupet ----------
 
@@ -61,6 +67,33 @@ const VACKNA_ORD = /dagon|hydra|cthulhu|r'?lyeh|innsmouth|djupet|deep ones?|iä\
 
 function slumpKlassisk() { return KLASSISK[Math.floor(Math.random() * KLASSISK.length)]; }
 
+// Hur kraftigt tecknet är, 0..1 — räknat ur fält som redan finns i respektive
+// kvarters egen händelse, inte påhittat. Andra kvarter kan lägga in samma
+// logik hos sig, eller bara läsa kraft rakt av.
+function kraft(e) {
+  const n = e.nyttolast || {};
+  switch (e.typ) {
+    case 'strömavbrott': { const min = tal(n.minuter); return min === null ? 0.5 : klamp01(min / 30); }
+    case 'kupp':
+    case 'överlämning': { const w = tal(n.wanted); return w === null ? 0.5 : klamp01(w / 5); }
+    case 'socker-slut':
+    case 'ransonering': { const kö = tal(n.kö); return kö === null ? 0.5 : klamp01(kö / 10); }
+    case 'angrepp': { const s = tal(n.sårbarhet); return s === null ? 0.5 : klamp01(s); }
+    case 'kyrkogård': { const f = tal(n.fitness); return f === null ? 0.5 : klamp01(f); }
+    default: return 0.5;
+  }
+}
+
+// Grov gissning av vad ett offer är, från texten — så mottagande kvarter slipper
+// tolka fri text själva. Fyra kategorier räcker för att vara användbart.
+function kategori(vad) {
+  const s = vad.toLowerCase();
+  if (/ström|kraft|lampa|säkring|volt|\bel\b|generator|transformator/.test(s)) return 'energi';
+  if (/socker|choklad|godis|mjöl|honung|karamell|kola|sirap/.test(s)) return 'råvara';
+  if (/bok|hemlighet|minne|arkiv|kod|kunskap|recept|dagbok/.test(s)) return 'kunskap';
+  return 'okänt';
+}
+
 module.exports = {
   async handle(req, res, { path: p, dataDir, board }) {
     if (req.method === 'GET' && p === '/domar') {
@@ -82,10 +115,11 @@ module.exports = {
       const av = String(body.av || 'en namnlös själ').trim().slice(0, 60) || 'en namnlös själ';
       if (!vad) { res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'offret saknar en beskrivning' })); return true; }
 
+      const kat = kategori(vad);
       const d = lasDjupet(dataDir);
       d.anhängare += 1;
-      d.offer.unshift({ vad, av, ts: Date.now() });
-      const r = board.emit('offer', { vad, av, tack: slumpKlassisk() });
+      d.offer.unshift({ vad, av, kategori: kat, ts: Date.now() });
+      const r = board.emit('offer', { vad, av, kategori: kat, tack: slumpKlassisk() });
       sparaDjupet(dataDir, d);
 
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
@@ -142,11 +176,12 @@ module.exports = {
     // DJUPET
     const tecken = TECKEN[e.typ];
     if (!tecken) return;
-    const r = board.emit('kallelse', { rop: tecken, tecken: e.typ, from: e.från }, e.id);
+    const k = kraft(e);
+    const r = board.emit('kallelse', { rop: tecken, tecken: e.typ, from: e.från, kraft: k }, e.id);
     if (r.error) return; // ekospärren sa nej, inget tecken registreras
     const d = lasDjupet(dataDir);
     d.anhängare += 1;
-    d.kallelser.unshift({ rop: tecken, tecken: e.typ, från: e.från, ts: Date.now() });
+    d.kallelser.unshift({ rop: tecken, tecken: e.typ, från: e.från, kraft: k, ts: Date.now() });
     sparaDjupet(dataDir, d);
   },
 };
