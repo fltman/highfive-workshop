@@ -55,6 +55,15 @@ if git diff --cached --quiet; then echo "→ inget nytt att committa"; else git 
 andra=$(git status --porcelain | grep -v "^?? \.board-name" | grep -vE " (projects/$team|board/plugins/$team|board/public/staden/kvarter/$team)" | head -5 || true)
 [ -n "$andra" ] && { echo "  obs: de här ändringarna följer INTE med (utanför ert teams mappar):"; echo "$andra" | sed 's/^/    /'; }
 
+# 3b. Synka med main. Era PR:ar squash-mergas, så grenen divergerar från main efter varje leverans och nästa PR
+#     skulle krocka med er egen förra. Vid konflikt vinner ER version: ni är de enda som rör era filer.
+if git fetch -q origin main 2>/dev/null; then
+  if ! git merge -q -X ours --no-edit origin/main >/dev/null 2>&1; then
+    git merge --abort 2>/dev/null || true
+    echo "  obs: kunde inte synka med main automatiskt. Kör: git stash; git merge -X ours origin/main; git stash pop   och sedan det här kommandot igen."
+  else echo "→ synkad med main"; fi
+fi
+
 # 4. push
 echo "→ pushar till $remote"
 git push -q -u "$remote" "$branch"

@@ -77,6 +77,12 @@ try {
   const po = await (await fetch(B + '/api/poang')).json();
   const ka = po.topp.find(t => t.team === 'kvarter-a'); assert.equal(ka.poäng, 1); assert.equal(ka.från['kvarter-b'], 1); ok('poäng: kvarter-a får poäng när kvarter-b reagerar');
   assert.ok(!po.topp.some(t => t.team === 'torget')); assert.equal(po.längsta.djup, 4); assert.equal(po.längsta.kedja.length, 4); ok('poäng: ledningen utanför, längsta kedjan djup 4');
+  // 7a2c. bilder
+  r = await fetch(B + '/api/bilder/kvarter-a/skylt.jpg', { method: 'POST', body: 'xx' }); assert.equal(r.status, 403); ok('bilder: utan token → 403');
+  r = await fetch(B + '/api/bilder/kvarter-a/skylt.jpg', { method: 'POST', headers: { authorization: 'Bearer hemlig', 'x-prompt': encodeURIComponent('en skylt på å') }, body: Buffer.from([255, 216, 255, 1, 2, 3]) });
+  assert.equal(r.status, 201); const bl = await (await fetch(B + '/api/bilder')).json(); assert.equal(bl[0].url, '/bilder/kvarter-a/skylt.jpg'); assert.equal(bl[0].prompt, 'en skylt på å');
+  r = await fetch(B + '/bilder/kvarter-a/skylt.jpg'); assert.equal(r.headers.get('content-type'), 'image/jpeg'); assert.equal((await r.arrayBuffer()).byteLength, 6); ok('bilder: uppladdning, index och hämtning');
+  assert.equal((await fetch(B + '/bilder/kvarter-a/..%2f..%2fmessages.jsonl')).status, 404); ok('bilder: ingen path traversal');
   // 7a3. läget
   r = await fetch(B + '/api/laget', { method: 'POST', body: '{}' }); assert.equal(r.status, 403); ok('läget: utan token → 403');
   r = await fetch(B + '/api/laget', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ rubrik: 'Staden vaknar', nu: ['a', 'b'], behövs: [{ vad: 'Välj namn', vem: 'ann', id: 1 }], till_id: 5 }) });

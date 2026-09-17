@@ -46,6 +46,11 @@
   .k .bar .sp { margin-left:auto; }
   .k .bar a, .k .bar button { color:var(--dim); background:none; border:0; font:inherit; cursor:pointer; text-decoration:none; padding:2px 6px; border-radius:5px; }
   .k .bar a:hover, .k .bar button:hover { color:var(--fg); background:#1b2027; }
+  /* platsporträttet: en banner överst i rutan, tonar ner i rutans färg */
+  .k .plats { height:110px; background-size:cover; background-position:center 45%; position:relative; flex:none; display:none; }
+  .k .plats.finns { display:block; }
+  .k .plats::after { content:''; position:absolute; inset:0; background:linear-gradient(to bottom, rgba(11,13,16,0) 35%, var(--panel) 100%); }
+  .k.stor .plats, .k.liten .plats { display:none; }
   .k iframe { width:100%; height:340px; border:0; background:var(--bg); display:block; }
   .k.blink { animation: blink 1.4s ease-out; } @keyframes blink { 0% { border-color:var(--accent);} 100% { border-color:var(--line);} }
   .k.liten iframe { height:200px; }
@@ -72,10 +77,18 @@ const namn = k => k.replace(/\.html$|\/$/, '');
 function kort(k) {
   const t = namn(k), url = '/staden/kvarter/' + encodeURIComponent(namn(k)) + (k.endsWith('/') ? '/' : '.html');
   const d = document.createElement('section'); d.className = 'k' + (t === 'torget' ? ' liten' : ''); d.dataset.team = t;
-  d.innerHTML = `<div class="bar"><span class="dot"></span><b>${esc(t)}</b><span class="sp"></span><a href="/t/${encodeURIComponent(t)}/" target="_blank" title="backend">/t/${esc(t)}</a><a href="${url}" target="_blank" title="öppna i egen flik">↗</a><button title="helskärm (Esc stänger)">⤢</button></div><iframe src="${url}" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy"></iframe>`;
+  d.innerHTML = `<div class="bar"><span class="dot"></span><b>${esc(t)}</b><span class="sp"></span><a href="/t/${encodeURIComponent(t)}/" target="_blank" title="backend">/t/${esc(t)}</a><a href="${url}" target="_blank" title="öppna i egen flik">↗</a><button title="helskärm (Esc stänger)">⤢</button></div><div class="plats"></div><iframe src="${url}" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy"></iframe>`;
   d.querySelector('button').onclick = () => stor(d);
+  porträtt(d, t);
   return d;
 }
+// platsporträtt: /bilder/<team>/plats.jpg om det finns. Kollas igen då och då, nya kvarter får sin bild efter en stund.
+function porträtt(d, t) {
+  const el = d.querySelector('.plats'); if (el.classList.contains('finns')) return;
+  const img = new Image(); img.onload = () => { el.style.backgroundImage = `url("${img.src}")`; el.classList.add('finns'); };
+  img.src = '/bilder/' + encodeURIComponent(t) + '/plats.jpg?' + Math.floor(Date.now() / 60000);
+}
+setInterval(() => { for (const d of seen.values()) porträtt(d, d.dataset.team); }, 30000);
 function stor(d) { const på = !d.classList.contains('stor'); document.querySelectorAll('.k.stor').forEach(x => x.classList.remove('stor')); d.classList.toggle('stor', på); document.body.style.overflow = på ? 'hidden' : ''; }
 addEventListener('keydown', e => { if (e.key === 'Escape') { document.querySelectorAll('.k.stor').forEach(x => x.classList.remove('stor')); document.body.style.overflow = ''; } });
 

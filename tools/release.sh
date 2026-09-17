@@ -42,8 +42,11 @@ case "$cmd" in
     # servern rörd → tester
     if files_of "$nr" | grep -q '^board/'; then
       echo "  board/ rörs → kör tester mot PR-grenen (plugins laddas av servern)"
-      tmp=$(mktemp -d); gh pr checkout "$nr" -R "$REPO" >/dev/null 2>&1 || true
-      (cd board && node test.mjs 2>&1 | tail -1) || bad=1
+      gh pr checkout "$nr" -R "$REPO" >/dev/null 2>&1 || true
+      # Hård tidsgräns och utdata till fil: en testserver som överlever ett fallerat test håller annars röret öppet för evigt.
+      ut=$(mktemp); (cd board && perl -e 'alarm 90; exec @ARGV' node test.mjs > "$ut" 2>&1); rc=$?
+      pkill -f "board/server.js" 2>/dev/null || true
+      tail -1 "$ut"; [ $rc -eq 0 ] || { echo "  TESTERNA FALLERADE eller hängde (exit $rc):"; grep -E "✗|Error|error" "$ut" | head -5; bad=1; }
       git checkout -q main
     fi
     [ $bad -eq 1 ] && { echo "RESULTAT: stopp"; exit 1; }

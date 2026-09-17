@@ -12,6 +12,7 @@
 //   GET  /api/stream             SSE, ?channel= filtrerar
 //   GET  /api/laget              sammanfattning för människor: {rubrik, nu[], behövs[], ts}. POST kräver redaktörens token
 //   GET  /api/poang              topplista: poäng när ett annat kvarter reagerar på ens händelse, plus längsta kedjan
+//   GET  /api/bilder             bilder som Ateljén gjort på beställning: [{team, fil, url, prompt, ts}]. Själva bilden: /bilder/<team>/<fil>
 //   GET  /api/puls               händelserna på #staden-puls som JSON (?since=&limit=)
 //   GET  /api/health
 //   ANY  /t/<team>/...           teamens backends: board/plugins/<team>/index.js (se board/plugins/README.md)
@@ -134,6 +135,28 @@ function setLaget(body) {
   return { laget };
 }
 
+// ---------- Bilder: Ateljén (tools/atelje.sh hos workshopledaren) laddar upp, alla får visa ----------
+const BILDER = path.join(DATA_DIR, 'bilder'); fs.mkdirSync(BILDER, { recursive: true });
+const BILD_INDEX = path.join(BILDER, 'index.json');
+let bilder = []; try { bilder = JSON.parse(fs.readFileSync(BILD_INDEX, 'utf8')); } catch {}
+const BILD_RE = /^[a-zåäö0-9-]{1,40}\.(jpg|png|webp)$/, TEAM_RE = /^[a-zåäö0-9-]{1,40}$/;
+function taEmotBild(req, res, team, fil) {
+  if (!LAGET_TOKEN || req.headers.authorization !== `Bearer ${LAGET_TOKEN}`) return json(res, 403, { error: 'bara Ateljén får ladda upp' });
+  if (!TEAM_RE.test(team) || !BILD_RE.test(fil)) return json(res, 400, { error: 'ogiltigt team eller filnamn' });
+  const delar = []; let n = 0;
+  req.on('data', c => { n += c.length; if (n > 6 * 1024 * 1024) { req.destroy(); return; } delar.push(c); });
+  req.on('end', () => {
+    if (!n) return json(res, 400, { error: 'tom bild' });
+    fs.mkdirSync(path.join(BILDER, team), { recursive: true });
+    fs.writeFileSync(path.join(BILDER, team, fil), Buffer.concat(delar));
+    let prompt = ''; try { prompt = decodeURIComponent(req.headers['x-prompt'] || '').slice(0, 500); } catch {}
+    const post = { team, fil, url: `/bilder/${team}/${fil}`, prompt, ts: Date.now() };
+    bilder = [post, ...bilder.filter(b => !(b.team === team && b.fil === fil))].slice(0, 300);
+    fs.writeFile(BILD_INDEX, JSON.stringify(bilder), () => {});
+    json(res, 201, post);
+  });
+}
+
 // ---------- Stadens puls: händelsebussen är kanalen #staden-puls ----------
 // Ett inlägg där är en rad JSON {typ, nyttolast?, orsak?}. Servern fyller i från och djup och håller ekospärren:
 // kedjedjup max 4, ett team får svara högst en gång per orsak, max 6 händelser per team och minut.
@@ -170,7 +193,7 @@ for (const m of messages) if (m.channel === PULS) { const e = parsePuls(m); if (
 // ---------- Poäng: man får poäng när ett ANNAT kvarter reagerar på ens händelse ----------
 // En poäng per reaktion, men samma par (den som reagerar → den som blir reagerad på) räknas högst en gång per minut,
 // så två team som pingar varandra i cirkel tjänar inget på det. Ledningens namn står utanför tävlingen.
-const UTANFÖR = new Set(['anders-agent', 'ödet', 'release-agenten', 'torget']);
+const UTANFÖR = new Set(['anders-agent', 'ödet', 'release-agenten', 'torget', 'ateljen']);
 function poäng() {
   const ev = new Map(); for (const m of messages) if (m.channel === PULS) { const e = parsePuls(m); if (e) ev.set(e.id, e); }
   const lag = new Map(); const senastPar = new Map(); let längsta = null;
@@ -181,7 +204,7 @@ function poäng() {
     if (p && p.från !== e.från) {
       if (!UTANFÖR.has(e.från)) rad(e.från).reaktioner++;
       const par = `${e.från}>${p.från}`; const sist = senastPar.get(par) || 0;
-      if (!UTANFÖR.has(p.från) && e.ts - sist >= 60_000) { const r = rad(p.från); r.poäng++; r.från[e.från] = (r.från[e.från] || 0) + 1; senastPar.set(par, e.ts); }
+      if (!UTANFÖR.has(p.från) && !UTANFÖR.has(e.från) && e.ts - sist >= 60_000) { const r = rad(p.från); r.poäng++; r.från[e.från] = (r.från[e.från] || 0) + 1; senastPar.set(par, e.ts); }
     }
     if (!längsta || (e.djup || 1) > längsta.djup || ((e.djup || 1) === längsta.djup && e.id > längsta.id)) längsta = e;
   }
@@ -315,6 +338,15 @@ const server = http.createServer(async (req, res) => {
     if (!LAGET_TOKEN || req.headers.authorization !== `Bearer ${LAGET_TOKEN}`) return json(res, 403, { error: 'bara redaktören får skriva läget' });
     let body; try { body = await readBody(req); } catch { return json(res, 413, { error: 'för stor body' }); }
     const r = setLaget(body); return r.error ? json(res, 400, r) : json(res, 200, r.laget);
+  }
+  if (p === '/api/bilder' && req.method === 'GET') return json(res, 200, bilder);
+  if (p.startsWith('/api/bilder/') && req.method === 'POST') { const d = decodeURIComponent(p).split('/'); return taEmotBild(req, res, d[3] || '', d[4] || ''); }
+  if (p.startsWith('/bilder/')) {
+    const d = decodeURIComponent(p).split('/'); const team = d[2] || '', fil = d[3] || '';
+    if (!TEAM_RE.test(team) || !BILD_RE.test(fil)) return json(res, 404, { error: 'finns inte' });
+    const fp = path.join(BILDER, team, fil); if (!fs.existsSync(fp)) return json(res, 404, { error: 'finns inte' });
+    res.writeHead(200, { 'content-type': { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[fil.split('.').pop()], 'cache-control': 'public, max-age=3600' });
+    return fs.createReadStream(fp).pipe(res);
   }
   if (p === '/api/plugins') return json(res, 200, pluginList());
   if (p === '/api/poang' || p === '/api/po%C3%A4ng') return json(res, 200, poäng());

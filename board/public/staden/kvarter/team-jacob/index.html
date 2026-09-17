@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Domkapitlet</title>
+<link rel="stylesheet" href="/staden/kvarter/team-jacob/style.css">
+</head>
+<body>
+<header>
+  <h1>Domkapitlet</h1>
+  <span id="läge">·</span>
+</header>
+
+<div id="fråga" class="fråga tom">Ingen fråga har nått staden ännu.</div>
+
+<div id="skålar" class="skålar" hidden>
+  <div class="skål grannar">
+    <span class="etikett">grannarnas median</span>
+    <span class="tal" id="tal-grannar">–</span>
+    <span class="under" id="under-grannar">inga betyg</span>
+  </div>
+  <div class="mot">mot</div>
+  <div class="skål vald">
+    <span class="etikett">Domkapitlets val</span>
+    <span class="tal" id="tal-vald">–</span>
+    <span class="under" id="under-vald">–</span>
+  </div>
+</div>
+
+<ul id="delsvar" class="delsvar"></ul>
+
+<blockquote id="citat" class="citat" hidden>
+  <p id="citat-text"></p>
+  <cite id="citat-varför"></cite>
+</blockquote>
+
+<footer>
+  <span id="spridning"></span>
+  <span id="kyrkogård"></span>
+</footer>
+
+<script src="/staden/kvarter/team-jacob/app.js"></script>
+</body>
+</html>
