@@ -69,9 +69,10 @@ function rita_extra(lista) {
   if (!x) { el.innerHTML = ''; return; }
   const n = x.nyttolast || {};
   const av = n.av === 'agent' ? 'rapport av <b>reportern</b>' : 'faktarad av <b>reglerna</b>';
+  const källa = n.citat_från ? ` · citat ur ${esc(n.citat_från)}s händelse` : '';
   el.innerHTML = `<div class="x"><span class="et">EXTRA</span><h2>${esc(n.rubrik || '')}</h2>` +
     (n.text ? `<p>${esc(n.text)}</p>` : '') +
-    `<div class="av">${av} · ${esc(n.kriterium || '')}${(n.kvarter || []).length ? ' · ' + esc(n.kvarter.join(' → ')) : ''}</div></div>`;
+    `<div class="av">${av}${n.hetta != null ? ` · hetta ${esc(n.hetta)}` : ''} · ${esc(n.kriterium || '')}${källa}</div></div>`;
 }
 
 function rita(data) {

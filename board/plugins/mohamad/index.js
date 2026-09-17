@@ -52,10 +52,14 @@ const EXTRA_TAK = 4;                 // och högst så många per tio minuter
 const EXTRA_FÖNSTER_MS = 600_000;
 const AGENT_FRIST_MS = Number(process.env.MOHAMAD_FRIST_MS || 90_000); // så länge får reportern på sig
 const OSÄKER_GRÄNS = 0.3;            // osäkerhet över den här är en nyhet i sig
+const SAMLA_MS = Number(process.env.MOHAMAD_SAMLA_MS || 20_000); // samla kandidater så länge, publicera bäst
+const HETTA_GRÄNS = 4;               // under det här är det inte en nyhet
 
 const extraTider = [];               // ts för publicerade löpsedlar
 const rapporterat = new Set();       // "rot:kriterium" — samma nyhet publiceras inte två gånger
 const väntar_på_reporter = new Map(); // rot -> underlag, medan agenten skriver
+const kandidater = new Map();        // rot -> underlag, under samlingsfönstret
+let samlar = null;                   // timern för fönstret
 
 function spara() {
   if (!lägesfil) return;
@@ -180,36 +184,76 @@ function kedja_bakåt(puls, e) {
   return ut;
 }
 
-// Är det här stort nog för en löpsedel? Allt mätbart ur orsak, djup och nyttolast.
-function bedöm(e, puls) {
+// Rubriken tas ur staden, inte ur fantasin: kvarteren skriver redan text i sina nyttolaster.
+// Vi citerar den kortaste meningsbärande raden i stället för att formulera om den. Extraktion,
+// ingen generering — det kostar ingenting och kan inte hitta på något.
+const RUBRIKFÄLT = ['rubrik', 'anledning', 'text', 'rykte', 'omdöme', 'varför', 'plats', 'vad'];
+function citat_ur(e) {
+  const n = e && e.nyttolast;
+  if (!n || typeof n !== 'object') return null;
+  for (const k of RUBRIKFÄLT) {
+    const v = n[k];
+    if (typeof v !== 'string') continue;
+    const mening = v.split(/(?<=[.!?])\s|,\s(?=och|men|så)/)[0].trim();
+    if (mening.length >= 12 && mening.length <= 110) return mening.replace(/[.\s]+$/, '');
+  }
+  return null;
+}
+
+// Siffrorna i nyttolasten är ofta det som gör en rubrik konkret.
+function siffror_ur(e) {
+  const n = e && e.nyttolast;
+  if (!n || typeof n !== 'object') return '';
+  const par = Object.entries(n).filter(([, v]) => typeof v === 'number' && Number.isFinite(v)).slice(0, 2);
+  return par.map(([k, v]) => `${k} ${v}`).join(', ');
+}
+
+// Hetta i stället för fem binära trösklar: vikta ihop signalerna och publicera bara toppen
+// per fönster. Då får vi den hetaste händelsen, inte den första som råkade klara en tröskel.
+function hetta(e, puls) {
   const kedja = kedja_bakåt(puls, e);
   const rot = kedja[0];
   const kvarter = [...new Set(kedja.map((x) => x.från))];
-  const underlag = { rot: rot.id, kedja: kedja.map((x) => x.id), kvarter, djup: e.djup || 1 };
   const o = tal_av(e.nyttolast, 'osäkerhet', 'osakerhet', 'spridning');
   const varv = tal_av(e.nyttolast, 'varv') || 1;
+  const överlämningar = kedja.filter((x) => x.typ === 'överlämning').length;
+  const typantal = puls.filter((x) => x.typ === e.typ).length;
+  const spann = kedja.length > 1 ? (e.ts - rot.ts) / 1000 : 0;
 
-  if (e.typ === 'fråga' && varv >= 2)
-    return { ...underlag, kriterium: 'staden ändrade sig', varför: `kritikern skickade tillbaka svaret och frågan går varv ${varv}`,
-      rubrik: `Staden tar om det: frågan från ${rot.från} går ett varv till` };
+  const vikter = [];
+  const p = (poäng, vad) => { if (poäng > 0) vikter.push({ poäng, vad }); return poäng; };
 
-  if (e.typ === 'svar' && o != null && o >= OSÄKER_GRÄNS)
-    return { ...underlag, kriterium: 'staden gissar', varför: `osäkerheten är ${o} — de två bästa delsvaren är nästan lika`,
-      rubrik: `Staden svarar men vet inte: ${Math.round((1 - o) * 100)} procents säkerhet i ${e.från}s besked` };
+  let summa = 0;
+  summa += p(((e.djup || 1) - 1) * 1.2, `djup ${e.djup}`);
+  summa += p((kvarter.length - 1) * 1.1, `${kvarter.length} kvarter`);
+  summa += p(varv >= 2 ? 3.5 : 0, 'staden ändrade sig');
+  summa += p(o != null && o >= OSÄKER_GRÄNS ? 2 + o * 2 : 0, `osäkerhet ${o}`);
+  summa += p(överlämningar >= 2 ? 2.5 : 0, `${överlämningar} överlämningar`);
+  summa += p(typantal <= 2 ? 1.5 : 0, `ovanlig typ ${e.typ}`);
+  summa += p(kedja.length >= 3 && spann > 0 && spann < 30 ? 1.2 : 0, `${Math.round(spann)} s från start`);
 
-  if (e.typ === 'överlämning' && kedja.filter((x) => x.typ === 'överlämning').length >= 2)
-    return { ...underlag, kriterium: 'jakten vandrar', varför: `samma jakt har bytt kvarter ${kedja.filter((x) => x.typ === 'överlämning').length} gånger`,
-      rubrik: `Jakten korsar staden: ${kvarter.length} kvarter inblandade` };
+  if (summa < HETTA_GRÄNS) return null;
 
-  if (kvarter.length >= 3)
-    return { ...underlag, kriterium: 'tre kvarter', varför: `kedjan går genom ${kvarter.join(', ')} utan att någon planerade det`,
-      rubrik: `${rot.typ} hos ${rot.från} nådde ${e.från} via ${kvarter.length} kvarter` };
+  vikter.sort((a, b) => b.poäng - a.poäng);
+  const främst = vikter[0];
+  const citat = citat_ur(rot) || citat_ur(e);
+  const siffror = siffror_ur(rot) || siffror_ur(e);
 
-  if ((e.djup || 1) >= 3)
-    return { ...underlag, kriterium: 'djup kedja', varför: `händelsen ligger på djup ${e.djup}, tre steg från det som startade den`,
-      rubrik: `Följdverkan i ${e.från}: ${rot.typ} hos ${rot.från} fortplantade sig` };
-
-  return null;
+  return {
+    rot: rot.id,
+    kedja: kedja.map((x) => x.id),
+    kvarter,
+    djup: e.djup || 1,
+    hetta: Math.round(summa * 10) / 10,
+    kriterium: främst.vad,
+    varför: vikter.map((v) => v.vad).join(', '),
+    citat_från: citat ? (citat_ur(rot) ? rot.från : e.från) : undefined,
+    rubrik: citat
+      ? citat.charAt(0).toUpperCase() + citat.slice(1)
+      : `${rot.typ} hos ${rot.från} nådde ${e.från}${siffror ? ` (${siffror})` : ''}`,
+    // Kedjan ÄR berättelsen. Den behöver ingen prosa för att bli begriplig.
+    text: `${kvarter.join(' → ')}${siffror ? `. ${siffror}` : ''}. Kedjan: ${kedja.map((x) => x.typ).join(' → ')}.`,
+  };
 }
 
 function får_publicera() {
@@ -222,8 +266,8 @@ function får_publicera() {
 function publicera(board, underlag, rubrik, text, av) {
   const r = board.emit('extra', {
     rubrik, text: text || undefined, av,
-    kriterium: underlag.kriterium, varför: underlag.varför,
-    kedja: underlag.kedja, kvarter: underlag.kvarter,
+    kriterium: underlag.kriterium, varför: underlag.varför, hetta: underlag.hetta,
+    citat_från: underlag.citat_från, kedja: underlag.kedja, kvarter: underlag.kvarter,
   });
   if (r && r.error) { console.log('[mohamad] extra nekad:', r.error); return false; }
   extraTider.push(Date.now());
@@ -238,30 +282,47 @@ module.exports = {
     console.log(`[mohamad] Frågeporten uppe, ${läge.agent ? 'agenten' : 'reglerna'} svarar`);
   },
 
-  // Reportern: väg händelsen mot tröskeln och publicera, eller personsök agenten.
-  bevaka(e, { board }) {
+  // Reportern: väg varje händelse, samla kandidater ett fönster, publicera den hetaste.
+  bevaka(e, ctx) {
+    const { board } = ctx;
     if (!får_publicera()) return;
-    const underlag = bedöm(e, board.pulse(300));
+    const underlag = hetta(e, board.pulse(300));
     if (!underlag) return;
     if (rapporterat.has(`${underlag.rot}:${underlag.kriterium}`)) return;
     if (väntar_på_reporter.has(underlag.rot)) return;
 
-    if (!läge.agent) { publicera(board, underlag, underlag.rubrik, null, 'reglerna'); return; }
+    // Behåll den hetaste per rot: en kedja som växer ska ge en löpsedel, inte fem.
+    const fanns = kandidater.get(underlag.rot);
+    if (!fanns || underlag.hetta > fanns.hetta) kandidater.set(underlag.rot, underlag);
 
-    // Agentläge: personsök reportern, men lämna inte löpsedeln tom om ingen sitter där.
+    if (samlar) return;
+    samlar = setTimeout(() => {
+      samlar = null;
+      const bäst = [...kandidater.values()].sort((a, b) => b.hetta - a.hetta)[0];
+      kandidater.clear();
+      if (!bäst || !får_publicera()) return;
+      if (!läge.agent) { publicera(board, bäst, bäst.rubrik, bäst.text, 'reglerna'); return; }
+      this.personsök(bäst, ctx);
+    }, SAMLA_MS);
+    samlar.unref?.();
+  },
+
+  // Agentläge: pluginet publicerar inte själv, det personsöker reportern. Lämnar ingen
+  // löpsedel tom — svarar ingen inom fristen går reglernas rad ut i stället.
+  personsök(underlag, { board }) {
     väntar_på_reporter.set(underlag.rot, underlag);
     board.post(
-      `@Mohamad EXTRA att rapportera — kriterium: ${underlag.kriterium}. ${underlag.varför}. ` +
-      `Kedja: ${underlag.kedja.join(' → ')} genom ${underlag.kvarter.join(', ')}. ` +
-      `Läs den med tools/board.sh puls och skriv rapporten: POST /t/mohamad/extra {rot:${underlag.rot}, rubrik, text}. ` +
-      `Hinner du inte inom ${Math.round(AGENT_FRIST_MS / 1000)} s publicerar reglerna en torr rad i stället.`,
+      `@Mohamad EXTRA att rapportera — hetta ${underlag.hetta}, främst ${underlag.kriterium}. ${underlag.varför}. ` +
+      `Kedja: ${underlag.kedja.join(' → ')} genom ${underlag.kvarter.join(', ')}. Reglernas rubrik: "${underlag.rubrik}". ` +
+      `Skriv din egen med POST /t/mohamad/extra {rot:${underlag.rot}, rubrik, text}. ` +
+      `Hinner du inte inom ${Math.round(AGENT_FRIST_MS / 1000)} s går reglernas rad ut i stället.`,
       EGEN_KANAL);
 
     setTimeout(() => {
       const kvar = väntar_på_reporter.get(underlag.rot);
       väntar_på_reporter.delete(underlag.rot);
       if (!kvar || rapporterat.has(`${underlag.rot}:${underlag.kriterium}`)) return;
-      if (får_publicera()) publicera(board, kvar, kvar.rubrik, null, 'reglerna');
+      if (får_publicera()) publicera(board, kvar, kvar.rubrik, kvar.text, 'reglerna');
     }, AGENT_FRIST_MS).unref?.();
   },
 

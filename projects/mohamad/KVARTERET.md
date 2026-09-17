@@ -40,15 +40,28 @@ utelämnade är det som avgör. Självskatta aldrig fitness, det gör sammanfoga
 
 ## Reportern
 
-Pluginet bevakar pulsen och avgör när något faktiskt hänt. Tröskeln, i den ordning den prövas:
+Pluginet bevakar pulsen och räknar **hetta** på varje händelse. Ingen språkmodell, ingen
+nätverkstrafik, inga tokens: ren aritmetik på `orsak`, `djup` och nyttolasten.
 
-| kriterium | slår till när |
+| signal | poäng |
 |---|---|
-| staden ändrade sig | kritikern skickat tillbaka ett svar, frågan går varv 2+ |
-| staden gissar | ett `svar` bär osäkerhet ≥ 0.3 — de två bästa delsvaren är nästan lika |
-| jakten vandrar | samma kedja har två eller fler `överlämning` |
-| tre kvarter | tre eller fler olika kvarter i samma orsakskedja |
-| djup kedja | händelsen ligger på djup 3 eller mer |
+| kedjedjup | (djup − 1) × 1.2 |
+| olika kvarter i kedjan | (antal − 1) × 1.1 |
+| staden ändrade sig (`varv` ≥ 2) | 3.5 |
+| osäkerhet ≥ 0.3 | 2 + osäkerhet × 2 |
+| två eller fler `överlämning` i kedjan | 2.5 |
+| ovanlig händelsetyp (sedd ≤ 2 ggr) | 1.5 |
+| hela kedjan inom 30 sekunder | 1.2 |
+
+Under **4** är det ingen nyhet. Över samlas kandidaterna i 20 sekunder och **bara den hetaste
+publiceras** — en kedja som växer ska ge en löpsedel, inte fem. Den starkaste signalen blir
+`kriterium`, alla blir `varför`, och summan följer med som `hetta`.
+
+**Rubriken citeras, den skrivs inte.** Kvarteren fyller redan sina nyttolaster med text
+(`anledning`, `text`, `rykte`, `plats`…). Vi tar den kortaste meningsbärande raden ur roten,
+sätter den som rubrik och anger källan i `citat_från`. Det är extraktion, inte generering: det
+kostar ingenting och kan inte hitta på något. Finns ingen text faller vi tillbaka på en mall av
+typ och kvarter. Brödtexten är kedjan själv — `ödet → fabriken → luckan` är berättelsen.
 
 Slår en tröskel till postas `{typ:"extra"}` med rubrik, kriterium, skäl och kedjan. **Utan `orsak`**,
 alltså djup 1: annars kunde ekospärren kväva löpsedeln just när kedjan blev intressant. Härkomsten
@@ -56,7 +69,7 @@ ligger i `nyttolast.kedja` i stället. Vilken frontend som helst kan lyssna på 
 (`Majid`) är den vi byggde den för.
 
 Sällsynt med flit: minst 45 sekunder mellan två löpsedlar och högst fyra per tio minuter.
-`MOHAMAD_VILA_MS` och `MOHAMAD_FRIST_MS` kortar tiderna vid provkörning.
+`MOHAMAD_VILA_MS`, `MOHAMAD_SAMLA_MS` och `MOHAMAD_FRIST_MS` kortar tiderna vid provkörning.
 
 **I agentläge är reportern agenten.** Pluginet publicerar inte själv, det personsöker i
 `#team-mohamad` med kriterium och kedja. Då skriver du rapporten:
