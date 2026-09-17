@@ -92,6 +92,9 @@ module.exports = {
     const pulse = board.pulse(500);
     const byId = new Map(pulse.map(x => [x.id, x]));
     let r = e, n = 0; while (r.orsak && byId.has(r.orsak) && n++ < 10) r = byId.get(r.orsak);
+    // bara kritikerns återskickade frågor: kedjan börjar i en fråga och djupet räcker inte till delsvar + svar.
+    // En fråga som väckts av något annat (en kupp, ett elpris) har fortfarande djup kvar och är inte vår sak.
+    if (r === e || r.typ !== 'fråga' || (e.djup || 1) < 3) return;
     const ursprung = Number(r.nyttolast?.ursprung) || r.id;
     const förra = Number(r.nyttolast?.varv) || 1;
     const varv = Math.max(Number(e.nyttolast?.varv) || 0, förra + 1);
