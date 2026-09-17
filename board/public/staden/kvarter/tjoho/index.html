@@ -15,6 +15,7 @@
   .dissolve{opacity:.65}.dissolve .ikon{color:#8b949e}
   .delsvar{background:#1a2740}.delsvar .ikon{color:#79b8ff}
   .lärdom{background:#3a1d2e}.lärdom .ikon{color:#f97583}
+  .betyg .ikon{color:#d2a8ff}
   .undvek .ikon,.spärrad .ikon,.fel .ikon{color:#ffb454}
   .kap{color:#ffd75f}
   .grå{color:#8b949e}
@@ -27,7 +28,7 @@
   <div class="flöde" id="flöde"><div class="tom">Inga frågor har nått Svärmen än.<br>Posta en {typ:'fråga'} så spawnar något.</div></div>
 </div>
 <script>
-const IKON = {spawn:'⬢', dissolve:'⬡', delsvar:'✉', lärdom:'✝', undvek:'↷', spärrad:'⛔', fel:'!'};
+const IKON = {spawn:'⬢', dissolve:'⬡', delsvar:'✉', lärdom:'✝', betyg:'⚖', undvek:'↷', spärrad:'⛔', fel:'!'};
 const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
 function rad(h) {
@@ -37,6 +38,7 @@ function rad(h) {
   if (h.händelse === 'dissolve') text = `<span class="kap">${esc(h.kapabilitet)}</span> löser upp sig <span class="grå">— ${esc(h.skäl)}</span>`;
   if (h.händelse === 'delsvar')  text = `delsvar postat av <span class="kap">${esc(h.kapabilitet)}</span> <span class="grå">→ puls [${esc(h.id)}]</span>`;
   if (h.händelse === 'lärdom')   text = `lärdom från kyrkogården <span class="grå">— "${esc(h.varför)}"</span>`;
+  if (h.händelse === 'betyg')    text = `betyg ${esc(h.fitness)} på delsvar [${esc(h.om)}] <span class="grå">från ${esc(h.från)}</span>`;
   if (h.händelse === 'undvek')   text = `<span class="kap">${esc(h.kapabilitet)}</span> hoppas över <span class="grå">— ${esc(h.skäl)}</span>`;
   if (h.händelse === 'spärrad')  text = `ekospärr <span class="grå">— ${esc(h.fel)}</span>`;
   if (h.händelse === 'fel')      text = `fel <span class="grå">— ${esc(h.detalj)}</span>`;

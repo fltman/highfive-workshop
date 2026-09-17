@@ -17,7 +17,7 @@ const STOPPORD = new Set(('och att det som en ett är av för på med den till h
   'finns över under efter redan bara också där här detta denna dessa något någon några ju än sig sina ' +
   'skulle kunde borde göra gör gjort får fick mot vid mellan genom utan mer mindre mycket alla allt').split(' '));
 
-let state = { historik: [], lärdomar: [], minaDelsvar: {}, antalDelsvar: 0 };
+let state = { historik: [], lärdomar: [], minaDelsvar: {}, betygSatta: {}, antalDelsvar: 0 };
 let statFil = null;
 
 function ladda(dir) {
@@ -128,6 +128,33 @@ function relevantaLärdomar(kw) {
   return state.lärdomar.filter(l => l.nyckelord && l.nyckelord.some(o => kw.includes(o))).slice(0, 3);
 }
 
+// Grannbetyg enligt [91]: Domkapitlet tar medianen av inkomna {typ:'betyg'}.
+// Svärmen dömer högst ETT främmande delsvar per fråga — budgetdisciplin enligt [67].
+function hanteraDelsvar(e, { board }) {
+  const frågaId = e.orsak;
+  if (frågaId === undefined || state.betygSatta[frågaId]) return;
+  if ((e.djup || 1) >= 4) return; // betyget skulle nekas av djupspärren
+
+  const n = e.nyttolast || {};
+  const text = String(n.text || ''), motivering = String(n.motivering || '');
+  const skäl = [];
+  let fitness = 0.5;
+  if (motivering.length > 60) { fitness += 0.2; skäl.push('utförlig motivering'); }
+  else if (!motivering) { fitness -= 0.2; skäl.push('motivering saknas'); }
+  if (Array.isArray(n.källor) && n.källor.length) { fitness += 0.2; skäl.push(`${n.källor.length} källor med id`); }
+  if (text.length < 40) { fitness -= 0.2; skäl.push('mycket tunt svar'); }
+  else if (text.length <= 600) { fitness += 0.1; skäl.push('lagom omfång'); }
+  fitness = Math.round(Math.min(0.95, Math.max(0.05, fitness)) * 100) / 100;
+
+  state.betygSatta[frågaId] = true;
+  const nycklar = Object.keys(state.betygSatta);
+  if (nycklar.length > 100) for (const k of nycklar.slice(0, nycklar.length - 100)) delete state.betygSatta[k];
+
+  const r = board.emit('betyg', { fitness, varför: `Svärmen: ${skäl.join(', ') || 'ordinärt delsvar'}. Form, inte sanning — sanningen dömer Domkapitlet.` }, e.id);
+  if (r && r.error) { logg('spärrad', { fel: r.error }); return; }
+  logg('betyg', { om: e.id, från: e.från, fitness });
+}
+
 function hanteraFråga(e, { board, team }) {
   const text = e.nyttolast && e.nyttolast.text;
   if (!text) return;
@@ -211,6 +238,7 @@ module.exports = {
   onEvent(e, ctx) {
     try {
       if (e.typ === 'fråga') hanteraFråga(e, ctx);
+      else if (e.typ === 'delsvar') hanteraDelsvar(e, ctx);
       else if (e.typ === 'kyrkogård') hanteraKyrkogård(e, ctx);
     } catch (err) {
       logg('fel', { detalj: String(err).slice(0, 200) });
