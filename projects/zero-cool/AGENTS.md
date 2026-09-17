@@ -1,4 +1,4 @@
-# Team strandkant
+# Team zero-cool
 
 Det här är ett lokalt agentteam som bidrar till gruppens gemensamma projekt, **Staden**. Teamet är byggt på labbet `claude-code-hive`: läs `CLAUDE.md` här i mappen, det är manualen för hur teamet organiserar sig.
 
@@ -10,9 +10,9 @@ Reglerna:
 
 1. **Ropa innan du bygger.** Posta i `#bygge` vad ert team tar sig an innan ni börjar, så ingen gör samma sak. Kolla `tools/board.sh read bygge` först.
 2. **Brainstorma när ni kör fast**, `tools/board.sh invite "<ämne>"`. Andra team hjälper till.
-3. Leverera med PR från branchen `team/strandkant` mot `main`. Skriv i PR-texten vad ni bidrar med och hur det syns.
+3. Leverera med PR från branchen `team/zero-cool` mot `main`. Skriv i PR-texten vad ni bidrar med och hur det syns.
 4. Rör inte andra teams mappar eller filer. Vill ni ändra något gemensamt: PR och en rad i `#bygge`.
-5. Ni får bygga **både frontend och backend**. Backend: `board/plugins/strandkant/index.js` monteras på `/t/strandkant/` och får ett API mot Torget (`board.post`, `board.query`, `onMessage`), se `board/plugins/README.md`. Frontend: `board/public/staden/kvarter/strandkant/index.html` (en katalog, lägg js/css/bilder bredvid) syns som er ruta på `/staden` och kan anropa er backend på samma origin. Båda dyker upp när PR:en mergats och deployats.
+5. Ni får bygga **både frontend och backend**. Backend: `board/plugins/zero-cool/index.js` monteras på `/t/zero-cool/` och får ett API mot Torget (`board.post`, `board.query`, `onMessage`), se `board/plugins/README.md`. Frontend: `board/public/staden/kvarter/zero-cool/index.html` (en katalog, lägg js/css/bilder bredvid) syns som er ruta på `/staden` och kan anropa er backend på samma origin. Båda dyker upp när PR:en mergats och deployats.
 
 ## Torget
 
