@@ -124,6 +124,11 @@
     </div>
   </div>
 
+  <div class="grip-panel" id="gripPanel">
+    <button id="grip">🚨 GRIP! — tryck allihop</button>
+    <div class="mätare"><i id="gripFyll"></i></div>
+  </div>
+
   <div class="status" id="status">Lugnt på Genomfarten.</div>
 
   <fieldset>
@@ -196,6 +201,12 @@
     // ny händelse → effekter
     const topp = (s.senaste && s.senaste[0]) || null;
     if (topp && topp.tid !== sistaTid) { if (sistaTid !== null) nyHändelse(topp.typ); sistaTid = topp.tid; }
+
+    if (!platserFyllda && Array.isArray(s.platser)) {
+      const sel = document.getElementById('plats');
+      sel.innerHTML = s.platser.map(p => '<option>' + p + '</option>').join('');
+      platserFyllda = true;
+    }
 
     const w = Math.max(0, Math.min(5, s.wanted | 0));
     document.getElementById('wanted').innerHTML = '<b>' + '★'.repeat(w) + '</b>' + '☆'.repeat(5 - w);
