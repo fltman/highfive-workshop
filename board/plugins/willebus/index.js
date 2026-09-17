@@ -22,6 +22,8 @@ const OVERLAMNING_MS = 10000;   // hur länge jakten stannar hos oss (och går a
 const förare = ['Röda Sköden', 'Bagarn', 'Loff', 'Tvillingen', 'Doris 78', 'Kajan'];
 const platser = ['Genomfarten', 'Godisfabriken', 'Elverket', 'Banken', 'Hamnen', 'Klub Lyktan', 'Kasinot'];
 const HJUL = ['🍒', '🚗', '💰', '💎', '🚔', '🍀'];
+const KORT_R = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const KORT_S = ['♠', '♥', '♦', '♣'];
 
 module.exports = {
   init(ctx) {
@@ -84,7 +86,58 @@ module.exports = {
       this._rulett(board, färg);
       return this._json(res, 200, this.state);
     }
+    // Blackjack: ett delat bord som rummet spelar tillsammans.
+    if (req.method === 'POST' && p === '/bj-ny') { this._bjNy(board); return this._json(res, 200, this.state); }
+    if (req.method === 'POST' && p === '/bj-hit') { this._bjHit(board); return this._json(res, 200, this.state); }
+    if (req.method === 'POST' && p === '/bj-stand') { this._bjStand(board); return this._json(res, 200, this.state); }
     return false; // → 404
+  },
+
+  _bjKort() { return KORT_R[Math.floor(Math.random() * 13)] + KORT_S[Math.floor(Math.random() * 4)]; },
+  _bjVärde(hand) {
+    let sum = 0, ess = 0;
+    for (const k of hand) {
+      const r = k.slice(0, -1);
+      if (r === 'A') { sum += 11; ess++; }
+      else if (r === 'K' || r === 'Q' || r === 'J' || r === '10') sum += 10;
+      else sum += Number(r);
+    }
+    while (sum > 21 && ess > 0) { sum -= 10; ess--; }
+    return sum;
+  },
+  _bjUppdatera() {
+    const bj = this.state.bj;
+    bj.spelarVärde = this._bjVärde(bj.spelarhand);
+    bj.givarVärde = this._bjVärde(bj.givarhand);
+  },
+  _bjNy(board) {
+    const bj = this.state.bj;
+    bj.spelarhand = [this._bjKort(), this._bjKort()];
+    bj.givarhand = [this._bjKort(), this._bjKort()];
+    bj.status = 'spelar'; bj.resultat = ''; bj.vinst = 0;
+    this._bjUppdatera();
+    if (bj.spelarVärde === 21) { bj.status = 'klar'; bj.resultat = 'BLACKJACK! 50 marker.'; bj.vinst = 50; this._registreraVinst(board, 50, 'blackjack'); }
+    this._spara();
+  },
+  _bjHit() {
+    const bj = this.state.bj;
+    if (bj.status !== 'spelar') return;
+    bj.spelarhand.push(this._bjKort());
+    this._bjUppdatera();
+    if (bj.spelarVärde > 21) { bj.status = 'klar'; bj.resultat = `Tjock på ${bj.spelarVärde} — givaren vinner.`; bj.vinst = 0; }
+    this._spara();
+  },
+  _bjStand(board) {
+    const bj = this.state.bj;
+    if (bj.status !== 'spelar') return;
+    while (this._bjVärde(bj.givarhand) < 17) bj.givarhand.push(this._bjKort());
+    this._bjUppdatera();
+    const pv = bj.spelarVärde, gv = bj.givarVärde;
+    if (gv > 21 || pv > gv) { bj.vinst = 20; bj.resultat = `Du ${gv > 21 ? 'vann — givaren blev tjock' : 'vann ' + pv + ' mot ' + gv}! 20 marker.`; this._registreraVinst(board, 20, 'blackjack'); }
+    else if (pv === gv) { bj.vinst = 0; bj.resultat = `Lika på ${pv} — push.`; }
+    else { bj.vinst = 0; bj.resultat = `Givaren vann ${gv} mot ${pv}.`; }
+    bj.status = 'klar';
+    this._spara();
   },
 
   // Roulette: 0 är grön, udda röd, jämn svart. Grön ger 14x, röd/svart 2x. Insats 10 marker.
@@ -378,6 +431,7 @@ module.exports = {
       casino: { öppen: false, fly: 0, gripen: 0, resultat: null },
       kasino: { jackpot: 100, snurr: 0, senaste: null, senasteVinst: 0, utbetalt: 0, meddelande: 'Snurra för att spela!' },
       rulett: { senasteNummer: null, senasteFärg: null, senasteVinst: 0, snurr: 0, meddelande: 'Satsa på en färg och snurra.' },
+      bj: { spelarhand: [], givarhand: [], spelarVärde: 0, givarVärde: 0, status: 'väntar', resultat: '', vinst: 0 },
       topp: [],
       platser, senaste: [], senasteHändelseTs: Date.now() };
   },
