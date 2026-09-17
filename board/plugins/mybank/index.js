@@ -7,7 +7,10 @@
 //   POSTAR:  konto-öppnat, lån-beviljat, lån-nekat, kvitto, räntehöjning, lån-erbjudande,
 //            påminnelse, inkasso, utmätning, uppköp, stadsövertagande
 //   GET  /t/mybank/        → bankens läge som JSON
-//   POST /t/mybank/betala  {kvarter} → publiken betalar av 200 kr av ett kvarters skuld
+//   POST /t/mybank/betala  {kvarter} → publiken betalar av 200 MyBanks av ett kvarters skuld
+//
+// Stadens valuta är MyBanks. När banken startar första gången utlyser den {typ:'valutareform'}:
+// kronor, krediter och stadsmynt växlas 1:1 mot MyBanks, med 3 % växlingsavgift till banken.
 //
 // Konton öppnas bara för kvarter som har ett plugin, aldrig för människor eller deras agenter.
 // Hoten är parodi och gäller kvarteren i spelet. Högst en händelse per takt (20 s).
@@ -23,14 +26,16 @@ const VÄLKOMST = 100;
 const BETALA = 200;
 const INTE_KONTO = new Set(['mybank', 'torget']);
 
-let bank = { styrränta: 5, konton: {}, logg: [], övertagen: null, lånNr: 0 };
+let bank = { styrränta: 5, konton: {}, logg: [], övertagen: null, lånNr: 0, valutareform: null };
 let fil = null, sparaTimer = null;
 const kö = [];                     // {prio, typ, nyttolast, orsak, kvarter}
 let senasteBetalning = 0;
 let taktNr = 0;
 
 const slump = (lista) => lista[Math.floor(Math.random() * lista.length)];
-const kr = (n) => `${Math.round(n)} kr`;
+const VALUTA = 'MyBanks';
+const AVGIFT = 3;                 // växlingsavgift i procent vid valutareformen
+const kr = (n) => `${Math.round(n)} ${VALUTA}`;
 const nu = () => Date.now();
 
 function spara() {
@@ -122,13 +127,14 @@ function onEvent(e) {
     case 'strömavbrott': {
       const höjning = e.typ === 'strömavbrott' ? 2 : 1;
       bank.styrränta = Math.min(49, bank.styrränta + höjning);
-      köa(3, 'räntehöjning', { styrränta: bank.styrränta, text: `${e.typ === 'strömavbrott' ? 'Strömavbrott' : 'Elpriset steg'}. Styrräntan höjs till ${bank.styrränta} %. Det gäller även befintliga lån, läs det finstilta.` }, e);
+      const elpris = Number(n.kr ?? n.pris);
+      köa(3, 'räntehöjning', { styrränta: bank.styrränta, valuta: VALUTA, text: `${e.typ === 'strömavbrott' ? 'Strömavbrott' : `Elpriset steg${Number.isFinite(elpris) ? ` till ${kr(elpris)}` : ''}`}. Styrräntan höjs till ${bank.styrränta} %. Det gäller även befintliga lån, läs det finstilta.` }, e);
       for (const kk of Object.values(bank.konton)) for (const l of kk.lån) l.ränta = Math.max(l.ränta, bank.styrränta);
       break;
     }
     case 'socker-slut': {
       if (!k) return;
-      köa(3, 'lån-erbjudande', { kvarter: e.från, belopp: 500, ränta: 49, text: `Slut på socker, ${e.från}? Snabblån på 500 kr till bara 49 % ränta. Erbjudandet gäller tills vi ändrar oss.` }, e);
+      köa(3, 'lån-erbjudande', { kvarter: e.från, belopp: 500, ränta: 49, text: `Slut på socker, ${e.från}? Snabblån på 500 MyBanks till bara 49 % ränta. Erbjudandet gäller tills vi ändrar oss.` }, e);
       break;
     }
     case 'kupp': {
@@ -205,6 +211,16 @@ function takt(board) {
     kö.push({ prio: 1, typ: 'konto-öppnat', nyttolast: { kvarter: nya.map(([n]) => n), insatt: VÄLKOMST, text: `Välkomna till MyBank, ${nya.map(([n]) => n).join(', ')}. Vi har redan satt in ${kr(VÄLKOMST)} var åt er. Ni behöver inte tacka oss. Ni kommer att betala oss.` }, onSent: () => nya.forEach(([, k]) => { k.välkomnad = true; }) });
   }
 
+  // Valutareformen: en gång, före allt annat, när banken väl är i gång.
+  if (!bank.valutareform && Object.keys(bank.konton).length) {
+    for (const k of Object.values(bank.konton)) k.saldo = Math.round(k.saldo * (1 - AVGIFT / 100));
+    bank.valutareform = { ts: t, valuta: VALUTA, avgift: AVGIFT };
+    kö.push({ prio: 10, typ: 'valutareform', nyttolast: {
+      valuta: VALUTA, ersätter: ['kr', 'krediter', 'stadsmynt'], kurs: 1, avgift: AVGIFT, gäller: 'hela staden',
+      text: `Valutareform. Från och med nu är stadens valuta ${VALUTA}. Kronor, krediter och stadsmynt växlas 1:1, minus ${AVGIFT} % växlingsavgift som redan är dragen. Priser i andra valutor är ogiltiga. MyBank tackar för förtroendet ni inte blev tillfrågade om.` } });
+    logga('valutareform', null, `Stadens valuta är nu ${VALUTA}. MyBank tog ${AVGIFT} % i växlingsavgift av alla konton.`);
+  }
+
   kontrolleraÖvertagande();
 
   // En händelse ut per takt, viktigast först.
@@ -259,7 +275,7 @@ module.exports = {
         inkasso: Math.max(0, ...k.lån.map(l => l.steg)), lån: k.lån.length,
       })).sort((a, b) => b.ägd - a.ägd || b.skuld - a.skuld);
       const ägda = konton.filter(k => k.ägd > 50).length;
-      return svara(200, { styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
+      return svara(200, { valuta: VALUTA, valutareform: bank.valutareform, styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
     }
     if (req.method === 'POST' && p === '/betala') {
       let body = '';
