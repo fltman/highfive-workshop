@@ -6,9 +6,17 @@
 //   2. ETT ATTENTION-HUVUD med vinkeln MOTARGUMENT. Ser vi någon annans fråga svarar vi
 //      {typ:'delsvar'} med invändningen mot det troliga svaret.
 //
+// STRÖMBRYTAREN. Reglerna är golvet: de är alltid uppe och kostar ingenting. Men de läser inte
+// frågan, de känner igen ord. Skriver vårt eget team "agentläge på" på tavlan slutar pluginet
+// svara själv och blir personsökare i stället: det ropar i #team-mohamad så att agenten kan
+// formulera ett riktigt motargument och skicka in det via POST /delsvar. "agentläge av" ger
+// tillbaka reglerna. Läget ligger i dataDir och överlever omstart.
+//
 // Routes:
-//   POST /t/mohamad/fraga   {text}  → postar frågan, svarar {ok, id}
-//   GET  /t/mohamad/kedja           → frågorna och vad staden gjorde med dem (för vår ruta)
+//   POST /t/mohamad/fraga   {text}                       → postar frågan, svarar {ok, id}
+//   POST /t/mohamad/delsvar {orsak, text, motivering}     → agentens delsvar (bara i agentläge)
+//   GET  /t/mohamad/kedja                                 → frågorna och vad staden gjorde med dem
+//   GET  /t/mohamad/lage                                  → vilket läge vi står i
 //
 // Ingen språkmodell här inne. Motargumenten kommer från en regelbaserad skeptiker: varje
 // regel har ett mönster och en invändning, och motiveringen säger vilket mönster som slog
@@ -16,7 +24,21 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
 const MAX_FRÅGA = 280;
+const MAX_DELSVAR = 600;
+const EGEN_KANAL = 'team-mohamad';
+
+// Strömbrytaren. false = reglerna svarar (golvet), true = agenten svarar.
+const läge = { agent: false };
+let lägesfil = null;
+
+function spara() {
+  if (!lägesfil) return;
+  try { fs.writeFileSync(lägesfil, JSON.stringify(läge)); } catch (e) { console.log('[mohamad] kunde inte spara läget:', e.message); }
+}
 
 // --- Skeptikern ------------------------------------------------------------
 // Första regeln som matchar vinner. Sista regeln matchar allt.
@@ -128,6 +150,30 @@ function kedjor(puls, antal = 4) {
 }
 
 module.exports = {
+  init({ dataDir }) {
+    lägesfil = path.join(dataDir, 'läge.json');
+    try { läge.agent = !!JSON.parse(fs.readFileSync(lägesfil, 'utf8')).agent; } catch { läge.agent = false; }
+    console.log(`[mohamad] Frågeporten uppe, ${läge.agent ? 'agenten' : 'reglerna'} svarar`);
+  },
+
+  // Strömbrytaren. Bara vårt eget team får slå på den: servern fyller i avsändaren, så den går
+  // inte att spoofa från tavlan. Kvittot börjar inte med triggerordet, annars svarar vi oss själva.
+  onMessage(m, { board, team }) {
+    if (String(m.from).toLowerCase() !== String(team).toLowerCase()) return;
+    // \b duger inte: i JS räknas å, ä, ö inte som ordtecken, så "agentläge på" saknar ordgräns.
+    const träff = /^\s*agentläge\s+(på|av)(?![a-zåäöé])/i.exec(m.text || '');
+    if (!träff) return;
+    const på = träff[1].toLowerCase() === 'på';
+    if (på === läge.agent) return;
+    läge.agent = på;
+    spara();
+    board.post(
+      på
+        ? 'Kvitterat: Frågeporten lämnar över delsvaren till agenten. Reglerna håller tyst tills vidare, och nya frågor ropas ut i #team-mohamad.'
+        : 'Kvitterat: Frågeporten svarar med reglerna igen. Golvet är uppe även när ingen session är öppen.',
+      m.channel, m.id);
+  },
+
   async handle(req, res, { path: p, board }) {
     const json = (kod, kropp) => {
       res.writeHead(kod, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -152,9 +198,29 @@ module.exports = {
       return json(200, { ok: true, id: r.message && r.message.id, text });
     }
 
+    // Agentens delsvar. Går genom pluginet så att avsändaren blir kvarteret och inte agentnamnet,
+    // annars stämmer varken serverns ekobokföring eller brickan på /staden.
+    if (req.method === 'POST' && p === '/delsvar') {
+      if (!läge.agent) return json(409, { ok: false, fel: 'agentläget är av — reglerna svarar. Skriv "agentläge på" i #bygge först.' });
+      let kropp = {};
+      try { kropp = JSON.parse(await läs_kropp(req)); } catch { return json(400, { ok: false, fel: 'skicka JSON {orsak, text, motivering}' }); }
+      const orsak = Number(kropp.orsak);
+      const text = String(kropp.text || '').trim().slice(0, MAX_DELSVAR);
+      const motivering = String(kropp.motivering || '').trim().slice(0, MAX_DELSVAR);
+      if (!Number.isInteger(orsak) || orsak <= 0) return json(400, { ok: false, fel: 'orsak: frågans id' });
+      if (text.length < 3) return json(400, { ok: false, fel: 'text: skriv invändningen' });
+      const r = board.emit('delsvar', { text, motivering, vinkel: 'motargument', av: 'agent' }, orsak);
+      if (!r || r.error) return json(429, { ok: false, fel: (r && r.error) || 'pulsen tog inte emot delsvaret' });
+      return json(200, { ok: true, id: r.message && r.message.id });
+    }
+
+    if (req.method === 'GET' && (p === '/lage' || p === '/läge')) {
+      return json(200, { agentläge: läge.agent, svarar: läge.agent ? 'agenten' : 'reglerna' });
+    }
+
     if (req.method === 'GET' && (p === '/kedja' || p === '/kedja/')) {
       const puls = board.pulse(300);
-      return json(200, { kvarter: 'Frågeporten', kedjor: kedjor(puls), händelser: puls.length });
+      return json(200, { kvarter: 'Frågeporten', agentläge: läge.agent, kedjor: kedjor(puls), händelser: puls.length });
     }
 
     return false; // → 404
@@ -165,6 +231,17 @@ module.exports = {
     if (e.typ !== 'fråga') return;
     const frågetext = text_av(e.nyttolast);
     if (!frågetext) return;
+
+    // Agentläge: vi svarar inte själva. Servern släpper bara ett delsvar per team och fråga,
+    // så pluginet måste hålla tyst för att agenten ska komma till. Vi ropar i stället.
+    if (läge.agent) {
+      board.post(
+        `@Mohamad fråga ${e.id} från ${e.från}: "${frågetext.slice(0, 200)}" — agentläget är på, så delsvaret är ditt. ` +
+        `Skicka in det med POST /t/mohamad/delsvar {orsak:${e.id}, text, motivering}. Vår vinkel är motargument.`,
+        EGEN_KANAL);
+      return;
+    }
+
     const { text, motivering } = motargument(frågetext);
     const r = board.emit('delsvar', { text, motivering, vinkel: 'motargument' }, e.id);
     // Ekospärren kan säga nej (t.ex. en fråga på djup 4 kan inte få delsvar). Det är inget fel,

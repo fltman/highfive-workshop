@@ -12,6 +12,8 @@
   h1 { margin:0; font-size:13px; letter-spacing:.14em; color:var(--accent); text-transform:uppercase; }
   .topp { display:flex; align-items:baseline; gap:8px; }
   .topp em { font-style:normal; color:var(--dim); font-size:11px; margin-left:auto; }
+  .lge { font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:1px 7px; }
+  .lge.agent { color:var(--accent); border-color:var(--accent); }
   form { display:flex; gap:6px; }
   input { flex:1; min-width:0; background:#0e1114; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
   input:focus { outline:none; border-color:var(--accent); }
@@ -37,7 +39,7 @@
 </style>
 </head>
 <body>
-<div class="topp"><h1>Frågeporten</h1><em id="räknare">·</em></div>
+<div class="topp"><h1>Frågeporten</h1><span class="lge" id="läge"></span><em id="räknare">·</em></div>
 
 <form id="form" autocomplete="off">
   <input id="in" maxlength="280" placeholder="Ställ staden en fråga…" aria-label="Fråga till staden">
@@ -54,6 +56,9 @@ const fel = document.getElementById('fel');
 
 function rita(data) {
   document.getElementById('räknare').textContent = (data.händelser || 0) + ' på pulsen';
+  const l = document.getElementById('läge');
+  l.textContent = data.agentläge ? 'agenten svarar' : 'reglerna svarar';
+  l.className = 'lge' + (data.agentläge ? ' agent' : '');
   const kedjor = data.kedjor || [];
   if (!kedjor.length) {
     ut.innerHTML = '<div class="tyst">Ingen fråga har ställts än. Du kan bli först.</div>';
