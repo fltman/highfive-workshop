@@ -1,18 +1,14 @@
-// Lyktstolpen (team iPät): fråge-ingången till tanken som vandrar genom staden.
-//   POST /t/ipat/fraga   {text}  → publiken ställer en fråga, vi postar {typ:'fråga', nyttolast:{text, varv:1}}
-//   GET  /t/ipat/fragor          → de senaste trådarna: fråga, delsvar, svar, kyrkogård, dom, varv
+// Lyktstolpen (team iPät): varv två i tanken som vandrar genom staden.
+//   GET /t/ipat/fragor  → de senaste trådarna: fråga, delsvar, svar, kyrkogård, dom, alla varv i samma tråd
 //
-// Varv två: kritikern skickar tillbaka en fråga med orsak = svaret, och hamnar då på djup 4.
+// Kritikern skickar tillbaka en fråga med orsak = svaret, och hamnar då på djup 4.
 // Där får ingen svara längre, så vi tar emot den och ställer om den som en ny fråga på djup 1,
 // med {varv, ursprung, föregående} i nyttolasten så kedjan går att följa. Högst MAX_VARV varv.
+// Publikens frågor tar Frågeporten (mohamad) och ann emot, inte vi.
 
-const MAX_TEXT = 300;
-const MIN_TEXT = 3;
-const PAUS_MS = 20_000;       // en publikfråga per 20 sekunder, så vi inte äter ekospärren åt staden
 const MAX_VARV = 3;
 const TRÅDAR = 8;
 
-let senastFråga = 0;
 const omställda = new Set();  // id på frågor vi redan ställt om
 
 const text = v => typeof v === 'string' ? v : v == null ? '' : typeof v === 'object' ? (v.text ?? v.svar ?? v.omdöme ?? v.motivering ?? JSON.stringify(v)) : String(v);
@@ -20,15 +16,6 @@ const text = v => typeof v === 'string' ? v : v == null ? '' : typeof v === 'obj
 function send(res, code, body) {
   res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(body));
-}
-
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    let buf = '';
-    req.on('data', c => { buf += c; if (buf.length > 8192) { reject(new Error('för stor')); req.destroy(); } });
-    req.on('end', () => { try { resolve(JSON.parse(buf || '{}')); } catch { reject(new Error('body måste vara JSON')); } });
-    req.on('error', reject);
-  });
 }
 
 // Bygg trådar ur pulsen: varje fråga på djup 1 är en rot, allt som via orsak leder dit hör till den.
@@ -67,21 +54,7 @@ function trådar(pulse) {
 
 module.exports = {
   async handle(req, res, { path, board }) {
-    if (req.method === 'GET' && path === '/fragor') {
-      return send(res, 200, { trådar: trådar(board.pulse(500)), nästa: Math.max(0, senastFråga + PAUS_MS - Date.now()) }), true;
-    }
-    if (req.method === 'POST' && path === '/fraga') {
-      let body;
-      try { body = await readJson(req); } catch (e) { return send(res, 400, { error: e.message }), true; }
-      const t = String(body.text || '').replace(/\s+/g, ' ').trim();
-      if (t.length < MIN_TEXT || t.length > MAX_TEXT) return send(res, 400, { error: `frågan ska vara ${MIN_TEXT}–${MAX_TEXT} tecken` }), true;
-      const vänta = senastFråga + PAUS_MS - Date.now();
-      if (vänta > 0) return send(res, 429, { error: `staden tänker fortfarande, prova igen om ${Math.ceil(vänta / 1000)} s`, nästa: vänta }), true;
-      const r = board.emit('fråga', { text: t, varv: 1 });
-      if (r.error) return send(res, 429, { error: r.error }), true;
-      senastFråga = Date.now();
-      return send(res, 201, { id: r.message.id }), true;
-    }
+    if (req.method === 'GET' && path === '/fragor') return send(res, 200, { trådar: trådar(board.pulse(500)) }), true;
     return false;
   },
 

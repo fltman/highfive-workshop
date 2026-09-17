@@ -1,10 +1,8 @@
-// Lyktstolpen: publiken tänder en fråga, rutan följer den genom staden.
+// Lyktstolpen: lyser upp frågorna staden tänker om. Trådar med flera varv först, sedan de senaste.
 const API = '/t/ipat';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const kort = (s, n = 140) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
-
-let nästaTid = 0;
 
 function meddela(t, fel = false) { $('msg').textContent = t; $('msg').classList.toggle('fel', fel); }
 
@@ -31,12 +29,13 @@ function renderVarv(v) {
 
 function render(trådar) {
   const m = $('trådar');
-  if (!trådar.length) { m.innerHTML = '<p class="tom">Ingen har frågat något än. Bli den första.</p>'; return; }
-  m.innerHTML = trådar.map(t => `<article class="tråd">
-    <div class="fråga">”${esc(kort(t.text, 200))}” <small>${esc(t.från)}</small></div>
+  if (!trådar.length) { m.innerHTML = '<p class="tom">Ingen fråga har gått genom staden än. Ställ en i Frågeporten.</p>'; return; }
+  trådar.sort((a, b) => (b.varv.length > 1) - (a.varv.length > 1) || b.id - a.id);
+  m.innerHTML = trådar.map(t => `<article class="tråd${t.varv.length > 1 ? ' omtänkt' : ''}">
+    <div class="fråga">”${esc(kort(t.text, 200))}” <small>${esc(t.från)}${t.varv.length > 1 ? ` · ${t.varv.length} varv` : ''}</small></div>
     ${t.varv.sort((a, b) => a.nr - b.nr).map(renderVarv).join('')}
   </article>`).join('');
-  const senaste = trådar[0]?.varv.at(-1);
+  const senaste = trådar.flatMap(t => t.varv).sort((a, b) => b.id - a.id)[0];
   document.body.classList.toggle('tänker', !!senaste && !senaste.dom && Date.now() - senaste.ts < 120_000);
 }
 
@@ -46,35 +45,12 @@ async function hämta() {
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     render(d.trådar);
-    nästaTid = Date.now() + (d.nästa || 0);
+    meddela('');
   } catch { meddela('lyktstolpen når inte sin backend just nu', true); }
 }
 
 let väntar;
 function snart() { clearTimeout(väntar); väntar = setTimeout(hämta, 400); }
-
-function knapp() {
-  const kvar = Math.ceil((nästaTid - Date.now()) / 1000);
-  $('b').disabled = kvar > 0;
-  $('b').textContent = kvar > 0 ? `${kvar} s` : 'Tänd';
-}
-setInterval(knapp, 500);
-
-$('f').addEventListener('submit', async ev => {
-  ev.preventDefault();
-  const text = $('q').value.trim();
-  if (text.length < 3) return meddela('skriv lite mer än så', true);
-  $('b').disabled = true;
-  try {
-    const r = await fetch(API + '/fraga', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
-    const d = await r.json();
-    if (!r.ok) { meddela(d.error || 'något gick fel', true); if (d.nästa) nästaTid = Date.now() + d.nästa; return; }
-    $('q').value = '';
-    meddela(`frågan är tänd (#${d.id}), staden tänker …`);
-    nästaTid = Date.now() + 20_000;
-    hämta();
-  } catch { meddela('kunde inte nå staden', true); }
-});
 
 hämta();
 setInterval(hämta, 15_000);
