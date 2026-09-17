@@ -18,6 +18,8 @@ const {
   beräknaPris,
   kostnadFör,
   väderEffektKrPerS,
+  dämpningsfaktor,
+  DÄMPNING_GLÖM_MS,
   TAK,
   TAU_NORMAL,
   TAU_AVBROTT,

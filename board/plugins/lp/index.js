@@ -22,9 +22,19 @@
 //   <allt annat>   (ingen)                     STANDARDKOSTNAD — nya kvarter ska dra
 //                                               ström utan att vi rör koden
 //
-// Vi läser bara e.typ (kostnad), e.från (statistik per kvarter) och e.id (orsak
-// på det vi postar tillbaka) — inga nyttolast-fält är obligatoriska. Vill Ödet
-// göra oss extra sårbara: skicka MÅNGA beat/shots-runda tätt efter varandra.
+// Vi läser e.typ (kostnad), e.från (statistik per kvarter, dämpningsnyckel),
+// e.id (orsak på det vi postar tillbaka) och e.orsak (dämpningen, se nedan) —
+// inga nyttolast-fält är obligatoriska. Vill Ödet göra oss extra sårbara:
+// skicka MÅNGA beat/shots-runda tätt efter varandra.
+//
+// ---------- Dämpningen (mot brusloopen, @Majid i #bygge) ----------
+// En händelse vars `orsak` pekar på något VI SJÄLVA nyss postade (elpris-steg/
+// strömavbrott/väder) räknas som ett EKO av oss — kostar progressivt mindre ju
+// fler gånger i rad samma (från,typ) ekar (se dämpningsfaktor i last.js).
+// Bryts kedjan (något nytt händer, eller tyst i DÄMPNING_GLÖM_MS) återställs
+// den till full kostnad. En jakt som eskalerar (kupp/överlämning, aldrig ett
+// svar på oss) träffas ALDRIG av det här — bara riktiga ekon av vårt eget
+// utskick dämpas, inte upprepning i allmänhet.
 //
 // ---------- Modellen ----------
 // Idén (UPPDRAG.md): varje händelse på #staden-puls drar ström. Elverket håller
@@ -55,7 +65,8 @@
 //   LYSSNAR (onEvent):    * (alla typer) — se tabellen ovan
 //
 //   GET /t/lp/tillstand → { last, tak, pris, avbrott, prishistorik, toppförbrukare,
-//                           väder: {typ, effektKrPerS, sedanS, nästaBytesOmS}, ... }
+//                           väder: {typ, effektKrPerS, sedanS, nästaBytesOmS},
+//                           dämpning: [{från, typ, räknare, faktorNu}], ... }
 //
 // Servern håller ekospärren (kedjedjup max 4, en reaktion per orsak, max 6/min).
 // Vi håller vår egen kvot lägre (4/min) och läser alltid retur från board.emit.
@@ -69,6 +80,9 @@ const {
   kostnadFör,
   väderEffektKrPerS,
   slumpaVäder,
+  dämpningsfaktor,
+  DÄMPNING_BAS,
+  DÄMPNING_GLÖM_MS,
   MAX_PRIS,
   TAK,
   TAU_NORMAL,
@@ -77,6 +91,11 @@ const {
   ÅTERHÄMTNING_S,
   ÅTERHÄMTNING_FAKTOR,
 } = require('./last.js');
+
+// Hur länge vi minns ett eget emitterat id för dämpningens skull — behöver
+// bara räcka längre än en rimlig studs-tid i en kedja (ekospärrens djup 4 gör
+// att en kedja ändå tar slut snabbt), 5 minuter är gott om marginal.
+const EGNA_ID_MINNE_MS = 5 * 60 * 1000;
 
 // Fysikkonstanterna (TAK, TAU_*, ÅTERHÄMTNING_*, väderEffektKrPerS) bor i
 // last.js — samma värden som projects/lp/simulera.js kör offline, en enda
@@ -130,6 +149,11 @@ module.exports = {
     this.senasteTickTs = Date.now();
     this.senasteHändelseId = undefined; // orsak på det vi postar — sätts av första onEvent, ALDRIG gissat
 
+    // Dämpningens minne — bara i minnet, inte persisterat (kortlivat precis
+    // som `last`, rimligt att det nollställs vid en omstart).
+    this.egnaEmitIds = new Map(); // id -> ts, våra egna postade händelser (för att känna igen ekon)
+    this.ekoTillstånd = new Map(); // "från|typ" -> { räknare, senasteTs }
+
     // Vädret PERSISTERAS (till skillnad från last) — annars skulle release-
     // agentens täta omstarter byta väder mycket oftare än "några gånger i
     // timmen", eftersom varje omstart annars skulle slumpa ett nytt väder.
@@ -154,12 +178,16 @@ module.exports = {
 
   // Varje händelse från ett ANNAT kvarter på #staden-puls. Alla typer kostar
   // något — okända typer får STANDARDKOSTNAD via kostnadFör(), så nya kvarter
-  // drar ström utan att vi rör koden.
+  // drar ström utan att vi rör koden. Dämpningen (se last.js) skalar ner
+  // kostnaden om händelsen är ett upprepat eko av vårt eget senaste utskick.
   onEvent(e) {
     try {
       this.senasteHändelseId = e.id;
-      const iÅterhämtning = !this.avbrott && Date.now() < this.återhämtningSlutarTs;
-      const kostnad = kostnadFör(e.typ) * (iÅterhämtning ? ÅTERHÄMTNING_FAKTOR : 1);
+      const nu = Date.now();
+      const iÅterhämtning = !this.avbrott && nu < this.återhämtningSlutarTs;
+
+      const dämpFaktor = this._dämpningsfaktorFör(e, nu);
+      const kostnad = kostnadFör(e.typ) * (iÅterhämtning ? ÅTERHÄMTNING_FAKTOR : 1) * dämpFaktor;
       this.last = laddaUpp(this.last, kostnad);
 
       const kvarter = e.från || 'okänt';
@@ -169,6 +197,38 @@ module.exports = {
       // för fullt, på samma event-loop som allt annat.
     } catch (err) {
       console.warn('lp: fel i onEvent:', err.message);
+    }
+  },
+
+  // Är den här händelsen ett EKO av oss (dess orsak pekar på ett id vi själva
+  // nyss postade)? I så fall: slå upp/uppdatera streaken för (från,typ) och
+  // returnera dämpningsfaktorn. Annars: full kostnad, och streaken (om någon)
+  // återställs — kedjan är bruten.
+  _dämpningsfaktorFör(e, nu) {
+    const ärEko = e.orsak !== undefined && this.egnaEmitIds.has(e.orsak);
+    const nyckel = `${e.från || 'okänt'}|${e.typ}`;
+    const tidigare = this.ekoTillstånd.get(nyckel);
+    const utgången = !tidigare || nu - tidigare.senasteTs > DÄMPNING_GLÖM_MS;
+    const räknareInnan = utgången ? 0 : tidigare.räknare;
+
+    const { faktor, nyttRäknare } = dämpningsfaktor(räknareInnan, ärEko);
+    this.ekoTillstånd.set(nyckel, { räknare: nyttRäknare, senasteTs: nu });
+    return faktor;
+  },
+
+  // Kom ihåg ett eget lyckat emit — så vi känner igen ekon av det senare.
+  _kommaIhågEgetEmit(r, nu) {
+    if (r && r.message && r.message.id !== undefined) this.egnaEmitIds.set(r.message.id, nu);
+  },
+
+  // Städa bort gammalt dämpningsminne så det inte växer obegränsat över en
+  // hel dags drift. Körs en gång per tick — kartorna är små, kostar inget.
+  _städaDämpningsminne(nu) {
+    for (const [id, ts] of this.egnaEmitIds) {
+      if (nu - ts > EGNA_ID_MINNE_MS) this.egnaEmitIds.delete(id);
+    }
+    for (const [nyckel, tillstånd] of this.ekoTillstånd) {
+      if (nu - tillstånd.senasteTs > DÄMPNING_GLÖM_MS) this.ekoTillstånd.delete(nyckel);
     }
   },
 
@@ -182,6 +242,8 @@ module.exports = {
       const nu = Date.now();
       const dt = Math.max(0, (nu - this.senasteTickTs) / 1000);
       this.senasteTickTs = nu;
+
+      this._städaDämpningsminne(nu);
 
       // Vädrets produktion — kontinuerlig, gäller oavsett avbrott (sol och
       // vind bryr sig inte om vårt nät). Negativ "kostnad" skalad med dt,
@@ -266,6 +328,7 @@ module.exports = {
         this.state.senasteAvbrott.varförInte = 'nekad av ekospärren: ' + r.error;
       } else {
         this.state.senasteAvbrott.postad = true;
+        this._kommaIhågEgetEmit(r, nu);
       }
     } else {
       // Kvoten slut den här minuten — avbrottet gäller ändå internt, vi bara
@@ -291,6 +354,7 @@ module.exports = {
     }
 
     this.senastPostatPris = nyPris;
+    this._kommaIhågEgetEmit(r, nu);
   },
 
   // Byter väder när det är dags (några gånger i timmen, se VÄDER_BYTE_*_MS).
@@ -319,6 +383,7 @@ module.exports = {
       };
       const r = this.board.emit('väder', nyttolast); // ingen tredje parameter — medvetet, se ovan
       if (r && r.error) console.warn('lp: väder nekades av ekospärren:', r.error);
+      else this._kommaIhågEgetEmit(r, nu);
     } else {
       // Kvoten slut den här minuten — vädret gäller ändå internt (produktionen
       // appliceras redan i _tick), vi bara hinner inte posta bytet just nu.
@@ -376,6 +441,22 @@ module.exports = {
         sedanS: Math.round((nu - this.state.väder.sedanTs) / 1000),
         nästaBytesOmS: Math.max(0, Math.round((this.state.väder.nästaBytesTs - nu) / 1000)),
       },
+      // Vilka (från,typ) som är aktivt dämpade just nu — så rutan kan visa
+      // "mybank/räntehöjning ekar, 87% avdrag" i stället för att bara priset
+      // rör sig konstigt utan förklaring.
+      dämpning: [...this.ekoTillstånd.entries()]
+        .filter(([, t]) => t.räknare > 0 && nu - t.senasteTs <= DÄMPNING_GLÖM_MS)
+        .map(([nyckel, t]) => {
+          const i = nyckel.indexOf('|');
+          return {
+            från: nyckel.slice(0, i),
+            typ: nyckel.slice(i + 1),
+            räknare: t.räknare,
+            faktorNu: Math.round(Math.pow(DÄMPNING_BAS, t.räknare) * 1000) / 1000,
+          };
+        })
+        .sort((a, b) => b.räknare - a.räknare)
+        .slice(0, 8),
     };
   },
 
