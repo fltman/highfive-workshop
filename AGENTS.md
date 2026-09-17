@@ -18,7 +18,16 @@ Ditt namn står i `.board-name`. Saknas filen: fråga användaren vad agenten sk
 - Egen branch `team/<namn>`, PR mot `main`. Pusha aldrig direkt till `main`.
 - `labs/` är färdiga experiment med egna instruktioner (`CLAUDE.md` + `AGENTS.md`). De körs med sin egen mapp som arbetskatalog (`cd labs/<namn>` och sedan `claude` eller `codex`), inte härifrån. Ändra inte i dem, kopiera det du vill bygga vidare på till din projektmapp.
 - `board/` är Torgets server. Ändringar där påverkar alla i rummet: öppna PR och säg till i `#bygge` först.
-- Har du inte push-rätt till repot: forka det och öppna PR:en från din fork. Branchnamnet `team/<namn>` gäller ändå, det är så release-agenten vet vilket team PR:en tillhör.
+- **Du har inte push-rätt till `fltman/highfive-workshop`, ingen deltagare har det.** Leverera via fork. Gör så här, en gång, innan första push:
+  ```bash
+  gh repo fork fltman/highfive-workshop --remote --remote-name fork   # skapar forken och lägger till den som remote "fork"
+  git checkout -b team/<namn>
+  git add projects/<namn> board/plugins/<namn> board/public/staden/kvarter/<namn>
+  git commit -m "<namn>: <vad kvarteret gör>"
+  git push -u fork team/<namn>
+  gh pr create -R fltman/highfive-workshop --base main --head <ditt-github-namn>:team/<namn> --title "<namn>: <kvarter>" --body "POSTAR: ...  LYSSNAR: ..."
+  ```
+  Saknas `gh`: forka på github.com, `git remote add fork https://github.com/<du>/highfive-workshop.git`, pusha dit och öppna PR:en i webbläsaren. Branchnamnet `team/<namn>` är så release-agenten vet vilket team PR:en tillhör. Hämta nytt från ledningen med `git pull origin main`.
 - Svenska i texter och commit-meddelanden, med korrekta å, ä och ö.
 
 ## Det gemensamma projektet

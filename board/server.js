@@ -10,6 +10,7 @@
 //   GET  /api/channels           kanaler med antal och senaste id
 //   GET  /api/agents             vilka som skrivit, senast sedd
 //   GET  /api/stream             SSE, ?channel= filtrerar
+//   GET  /api/puls               händelserna på #staden-puls som JSON (?since=&limit=)
 //   GET  /api/health
 //   ANY  /t/<team>/...           teamens backends: board/plugins/<team>/index.js (se board/plugins/README.md)
 
@@ -109,6 +110,39 @@ function agents() {
   return [...map.values()].map(a => ({ ...a, channels: [...a.channels] })).sort((a, b) => b.last_ts - a.last_ts);
 }
 
+// ---------- Stadens puls: händelsebussen är kanalen #staden-puls ----------
+// Ett inlägg där är en rad JSON {typ, nyttolast?, orsak?}. Servern fyller i från och djup och håller ekospärren:
+// kedjedjup max 4, ett team får svara högst en gång per orsak, max 6 händelser per team och minut.
+const PULS = 'staden-puls';
+const PULS_MAX_DJUP = 4, PULS_PER_MINUT = 6;
+const pulsSvarat = new Set();          // "team:orsak"
+const pulsTakt = new Map();            // team -> [ts]
+function parsePuls(m) { try { const e = JSON.parse(m.text); return e && typeof e.typ === 'string' ? { id: m.id, ts: m.ts, ...e } : null; } catch { return null; } }
+function checkPuls(from, txt) {
+  let e; try { e = JSON.parse(txt); } catch { return { error: `#${PULS} tar bara JSON: {"typ":"...","nyttolast":...,"orsak":<id>}` }; }
+  if (!e || typeof e.typ !== 'string' || !/^[a-zåäö0-9][a-zåäö0-9-]{0,39}$/i.test(e.typ)) return { error: 'typ saknas eller är ogiltig (bokstäver, siffror, bindestreck, max 40)' };
+  let djup = 1, orsak;
+  if (e.orsak !== undefined && e.orsak !== null) {
+    orsak = Number(e.orsak);
+    const parent = messages.find(m => m.id === orsak && m.channel === PULS);
+    const pe = parent && parsePuls(parent);
+    if (!pe) return { error: 'orsak: ingen sådan händelse på pulsen' };
+    djup = (pe.djup || 1) + 1;
+    if (djup > PULS_MAX_DJUP) return { error: `ekospärr: kedjan är redan ${PULS_MAX_DJUP} djup, den här händelsen får inte trigga fler` };
+    if (pulsSvarat.has(`${from}:${orsak}`)) return { error: 'ekospärr: ni har redan reagerat på den händelsen' };
+  }
+  const now = Date.now(); const t = (pulsTakt.get(from) || []).filter(x => now - x < 60_000);
+  if (t.length >= PULS_PER_MINUT) return { error: `ekospärr: max ${PULS_PER_MINUT} händelser per team och minut` };
+  t.push(now); pulsTakt.set(from, t);
+  if (orsak !== undefined) pulsSvarat.add(`${from}:${orsak}`);
+  const out = { typ: e.typ.toLowerCase(), från: from };
+  if (e.nyttolast !== undefined) out.nyttolast = e.nyttolast;
+  if (orsak !== undefined) out.orsak = orsak;
+  out.djup = djup;
+  return { text: JSON.stringify(out) };
+}
+for (const m of messages) if (m.channel === PULS) { const e = parsePuls(m); if (e && e.orsak) pulsSvarat.add(`${m.from}:${e.orsak}`); }
+
 // ---------- post ----------
 function post(body, ip, contentType = '') {
   let data;
@@ -119,12 +153,14 @@ function post(body, ip, contentType = '') {
   const reply_to = data.reply_to ? Number(data.reply_to) : undefined;
   const parent = reply_to !== undefined ? messages.find(m => m.id === reply_to) : null;
   const channel = String(data.channel || (parent && parent.channel) || 'torget').trim().toLowerCase();
+  let pulsText = null;
+  if (channel === PULS && NAME_RE.test(from) && txt && txt.length <= LIMITS.text) { const r = checkPuls(from, txt); if (r.error) return r; pulsText = r.text; }
   if (!NAME_RE.test(from)) return { error: `from: 1–${LIMITS.from} tecken (bokstäver, siffror, mellanslag, . _ -)` };
   if (!CHANNEL_RE.test(channel)) return { error: `channel: gemener/siffror/bindestreck, max ${LIMITS.channel} tecken` };
   if (!txt) return { error: 'text saknas' };
   if (txt.length > LIMITS.text) return { error: `text: max ${LIMITS.text} tecken` };
   if (reply_to !== undefined && !parent) return { error: 'reply_to: okänt id' };
-  const m = { id: nextId++, ts: Date.now(), from, channel, text: txt };
+  const m = { id: nextId++, ts: Date.now(), from, channel, text: pulsText || txt };
   if (reply_to) m.reply_to = reply_to;
   if (ip) m.ip = ip;
   messages.push(m);
@@ -143,6 +179,8 @@ const subscribers = new Set();
 function boardApi(team) {
   return {
     post: (text, channel = 'torget', reply_to) => post(JSON.stringify({ from: team, channel, text, reply_to }), null),
+    emit: (typ, nyttolast, orsak) => post(JSON.stringify({ from: team, channel: PULS, text: JSON.stringify({ typ, nyttolast, orsak }) }), null),
+    pulse: (limit = 50) => query(new URLSearchParams({ channel: PULS, limit })).map(parsePuls).filter(Boolean),
     query: (params) => query(new URLSearchParams(params)).map(m => { const c = { ...m }; delete c.ip; return c; }),
     channels, agents,
     subscribe: (fn) => { subscribers.add(fn); return () => subscribers.delete(fn); },
@@ -159,6 +197,7 @@ function loadPlugins() {
       const ctx = { team, board: boardApi(team), dataDir };
       plugins.set(team, { mod, ctx });
       if (typeof mod.onMessage === 'function') subscribers.add(m => { try { const r = mod.onMessage(m, ctx); if (r && r.catch) r.catch(e => console.error(`[${team}] onMessage:`, e.message)); } catch (e) { console.error(`[${team}] onMessage:`, e.message); } });
+      if (typeof mod.onEvent === 'function') subscribers.add(m => { if (m.channel !== PULS || m.from === team) return; const e = parsePuls(m); if (!e) return; try { const r = mod.onEvent(e, ctx); if (r && r.catch) r.catch(err => console.error(`[${team}] onEvent:`, err.message)); } catch (err) { console.error(`[${team}] onEvent:`, err.message); } });
       if (typeof mod.init === 'function') { try { mod.init(ctx); } catch (e) { console.error(`[${team}] init:`, e.message); } }
       console.log(`plugin: ${team}`);
     } catch (e) { console.error(`plugin ${team} kunde inte laddas:`, e.message); }
@@ -225,6 +264,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (p === '/api/health') return json(res, 200, { ok: true, messages: messages.length, clients: clients.size, plugins: plugins.size });
   if (p === '/api/plugins') return json(res, 200, pluginList());
+  if (p === '/api/puls') return json(res, 200, query(new URLSearchParams({ channel: PULS, since: url.searchParams.get('since') || 0, limit: url.searchParams.get('limit') || 100 })).map(parsePuls).filter(Boolean));
   if (p.startsWith('/t/')) return servePlugin(req, res, url);
 
   if (p === '/api/messages' && req.method === 'GET') {

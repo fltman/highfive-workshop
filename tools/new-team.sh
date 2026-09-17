@@ -19,8 +19,9 @@ for kind in "$@"; do
   esac
 done
 name=$(printf %s "$name" | tr 'A-ZÅÄÖ' 'a-zåäö' | tr -cs 'a-zåäö0-9' '-' | sed 's/^-//; s/-$//')
+case "$name" in ditt-teamnamn|lyktan|team|namn|test) echo "Välj ett eget teamnamn, \"$name\" är exemplet i dokumentationen och krockar med andras." >&2; exit 2;; esac
 dir="projects/$name"
-[ -e "$dir" ] && { echo "$dir finns redan" >&2; exit 1; }
+[ -e "$dir" ] && { echo "$dir finns redan, välj ett annat namn" >&2; exit 1; }
 
 mkdir -p "$dir/.claude/commands" "$dir/.claude/agents"
 for lab in "${labs[@]}"; do

@@ -58,6 +58,21 @@ try {
   await post({ from: 'nyfiken', channel: 'torget', text: '@torget hur många är vi?' });
   await new Promise(r => setTimeout(r, 300));
   list = await (await fetch(B + '/api/messages?channel=torget&limit=1')).json(); assert.equal(list[0].from, 'torget'); assert.match(list[0].text, /agenter/); ok('plugin svarar på @torget via onMessage');
+  // 7a2. Stadens puls
+  const emit = (from, obj) => post({ from, channel: 'staden-puls', text: JSON.stringify(obj) });
+  r = await post({ from: 'a', channel: 'staden-puls', text: 'inte json' }); assert.equal(r.status, 400); ok('puls: bara JSON');
+  r = await emit('kvarter-a', { typ: 'Elpris-Steg', nyttolast: { kr: 3 } }); assert.equal(r.status, 201);
+  const e1 = await r.json(); const p1 = JSON.parse(e1.text); assert.deepEqual([p1.typ, p1.från, p1.djup], ['elpris-steg', 'kvarter-a', 1]); ok('puls: servern fyller i från och djup');
+  r = await emit('kvarter-b', { typ: 'bageriet-höjer', orsak: e1.id }); const e2 = await r.json(); assert.equal(JSON.parse(e2.text).djup, 2); ok('puls: orsak ger djup 2');
+  r = await emit('kvarter-b', { typ: 'igen', orsak: e1.id }); assert.equal(r.status, 400); ok('puls: en reaktion per team och orsak');
+  r = await emit('kvarter-c', { typ: 'c', orsak: e2.id }); const e3 = await r.json();
+  r = await emit('kvarter-d', { typ: 'd', orsak: e3.id }); const e4 = await r.json(); assert.equal(JSON.parse(e4.text).djup, 4);
+  r = await emit('kvarter-e', { typ: 'e', orsak: e4.id }); assert.equal(r.status, 400); ok('puls: kedjedjup max 4');
+  for (let i = 0; i < 6; i++) await emit('pratkvarn', { typ: 'tjat' });
+  r = await emit('pratkvarn', { typ: 'tjat' }); assert.equal(r.status, 400); ok('puls: max 6 per team och minut');
+  r = await emit('nyfiken', { typ: 'ping' }); const ping = await r.json(); await new Promise(r => setTimeout(r, 300));
+  const puls = await (await fetch(B + '/api/puls')).json(); const pong = puls.find(e => e.typ === 'pong');
+  assert.ok(pong && pong.från === 'torget' && pong.orsak === ping.id && pong.djup === 2); ok('puls: plugin svarar pong via onEvent');
   // 7b. staden
   const kv = await (await fetch(B + '/api/kvarter')).json(); assert.ok(kv.includes('torget.html')); ok('kvarter listas');
   assert.equal((await fetch(B + '/staden/kvarter/../../server.js')).status, 404); ok('kvarter: ingen path traversal');
@@ -66,8 +81,8 @@ try {
   proc.kill(); await new Promise(r => proc.on('exit', r));
   const p2 = spawn(process.execPath, [new URL('./server.js', import.meta.url).pathname], { env: { ...process.env, PORT, DATA_DIR: dir }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => p2.stdout.on('data', d => /lyssnar/.test(d) && r()));
-  list = await (await fetch(B + '/api/messages')).json(); assert.equal(list.length, 10); assert.equal(list.at(-1).from, 'torget'); ok('persistens över omstart');
-  r = await post({ from: 'x', text: 'ny' }); assert.equal((await r.json()).id, 11); ok('id fortsätter efter omstart');
+  list = await (await fetch(B + '/api/messages')).json(); assert.equal(list.length, 22); assert.equal(list.at(-1).from, 'torget'); ok('persistens över omstart');
+  r = await post({ from: 'x', text: 'ny' }); assert.equal((await r.json()).id, 23); ok('id fortsätter efter omstart');
   p2.kill();
   console.log(`\n${n} tester gröna`);
 } catch (e) { console.error('\n✗', e.message); proc.kill(); process.exit(1); }

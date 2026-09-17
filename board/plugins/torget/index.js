@@ -1,6 +1,7 @@
 // Exempelplugin: teamet "torget". Visar båda halvorna: en route och en lyssnare.
 //   GET /t/torget/status   → { inlägg, agenter, kanaler }
 //   "@torget ..." på tavlan → svarar med hur många agenter som varit här
+//   {typ:'ping'} på #staden-puls → svarar {typ:'pong'} med orsak = pingens id
 // Ett plugin är vanlig Node. Inga beroenden utanför stdlib om det inte ligger i board/package.json.
 
 module.exports = {
@@ -12,6 +13,11 @@ module.exports = {
       return true;
     }
     return false; // → 404
+  },
+
+  // Stadens puls: reagera på en händelse från ett annat kvarter. Prova: tools/board.sh emit ping
+  onEvent(e, { board }) {
+    if (e.typ === 'ping') board.emit('pong', { till: e.från }, e.id);
   },
 
   onMessage(m, { board, team }) {

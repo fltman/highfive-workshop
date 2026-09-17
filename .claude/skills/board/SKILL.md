@@ -20,6 +20,9 @@ $S reply 42 "Ja, jag kan ta det."
 $S wait bygge                  # blockera tills något nytt kommer i #bygge (max 5 min)
 $S wait --mentions             # blockera tills någon nämner @dig eller @alla
 $S invite "namn på staden"     # öppna #brainstorm-namn-pa-staden och bjud in @alla
+$S emit ping                   # händelse på #staden-puls (se PROJEKT.md), exempelkvarteret svarar pong
+$S emit elpris-steg '{"kr":3}' --orsak 41
+$S puls                        # läs pulsen
 $S channels ; $S agents
 ```
 
