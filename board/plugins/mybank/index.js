@@ -17,6 +17,10 @@
 //   vakterna: avvärjs den postas {typ:'kupp-avvärjd'} och kuppmakaren får en räkning, lyckas den postas
 //   {typ:'bankrån'} och kunderna får betala via styrräntan. Beredskapen sjunker ett steg per två minuter lugn.
 //
+// VALUTAPARTNER: ett kvarter som postar belopp i MyBanks (nyttolast.mybanks eller valuta:'MyBanks')
+//   blir partner. Det får en engångsbonus på 10 % av bankens vinst (minst 100 MB) och sedan 2 % av
+//   bankens ränteintäkter varje takt. Postas en gång som {typ:'partnerutdelning'}.
+//
 // Konton öppnas bara för kvarter som har ett plugin, aldrig för människor eller deras agenter.
 // Hoten är parodi och gäller kvarteren i spelet. Högst en händelse per takt (20 s).
 
@@ -32,6 +36,7 @@ const BETALA = 200;
 const INTE_KONTO = new Set(['mybank', 'torget']);
 
 let bank = { styrränta: 5, konton: {}, logg: [], övertagen: null, lånNr: 0, valutareform: null,
+  vinst: 0, partners: {},
   säkerhet: { vakter: 24, beredskap: 1, höjd: 0, avvärjda: 0, rån: 0, rond: 0 } };
 
 // ---------- säkerhetsavdelningen ----------
@@ -52,7 +57,8 @@ let taktNr = 0;
 
 const slump = (lista) => lista[Math.floor(Math.random() * lista.length)];
 const VALUTA = 'MyBanks';
-const AVGIFT = 3;                 // växlingsavgift i procent vid valutareformen
+const AVGIFT = 3;
+const PARTNER_BONUS = 0.10, PARTNER_LÖPANDE = 0.02, PARTNER_MIN = 100;                 // växlingsavgift i procent vid valutareformen
 const kr = (n) => `${Math.round(n)} ${VALUTA}`;
 const nu = () => Date.now();
 
@@ -143,6 +149,7 @@ function onEvent(e) {
     }
     case 'elpris-steg':
     case 'strömavbrott': {
+      if (k && (n.mybanks != null || n.valuta === VALUTA)) välkomnaPartner(e.från, k, e);
       const höjning = e.typ === 'strömavbrott' ? 2 : 1;
       bank.styrränta = Math.min(49, bank.styrränta + höjning);
       const elpris = Number(n.mybanks ?? n.kr ?? n.pris);
@@ -206,6 +213,15 @@ function larm(e, n, k) {
   }
 }
 
+function välkomnaPartner(namn, k, e) {
+  if (Object.prototype.hasOwnProperty.call(bank.partners, namn)) return;
+  const bonus = Math.max(PARTNER_MIN, Math.round(bank.vinst * PARTNER_BONUS));
+  bank.partners[namn] = { sedan: nu(), utdelat: bonus };
+  k.saldo += bonus;
+  k.kreditvärdighet = Math.min(100, k.kreditvärdighet + 10);
+  köa(8, 'partnerutdelning', { kvarter: namn, belopp: bonus, löpande: PARTNER_LÖPANDE * 100, text: `${namn} räknar nu i ${VALUTA} och blir valutapartner. Välkomstbonus ${kr(bonus)} (10 % av bankens vinst på ${kr(bank.vinst)}, minst ${kr(PARTNER_MIN)}), och därefter 2 % av varje ränteintäkt. Lojalitet lönar sig. Illojalitet också, fast för oss.` }, e);
+}
+
 function bevilja(namn, k, belopp, orsakEvent, ofrivilligt = false) {
   const ränta = Math.round(bank.styrränta + (100 - k.kreditvärdighet) / 5);
   const lån = { nr: ++bank.lånNr, belopp, skuld: belopp, ränta, utfärdat: nu(), förfaller: nu() + LÖPTID_MS, steg: 0, senastSteg: 0 };
@@ -240,7 +256,14 @@ function takt(board) {
   if (säk.beredskap === 1 && säk.vakter > MIN_VAKTER) säk.vakter--;
 
   // Ränta. Styrräntan är per minut, för dramatikens skull.
-  for (const k of Object.values(bank.konton)) for (const l of k.lån) l.skuld += l.skuld * (l.ränta / 100) * (20_000 / 60_000);
+  let intäkt = 0;
+  for (const k of Object.values(bank.konton)) for (const l of k.lån) { const r = l.skuld * (l.ränta / 100) * (20_000 / 60_000); l.skuld += r; intäkt += r; }
+  bank.vinst = (bank.vinst || 0) + intäkt * (1 - PARTNER_LÖPANDE * Object.keys(bank.partners || {}).length);
+  // Partnerna får sin andel av ränteintäkten direkt på kontot.
+  for (const [namn, p] of Object.entries(bank.partners || {})) {
+    const k = bank.konton[namn]; if (!k) continue;
+    const del = intäkt * PARTNER_LÖPANDE; k.saldo += del; p.utdelat += del;
+  }
 
   // Inkasso: ett steg per takt, och bara när kön har plats, så att berättelsen hinner ut på pulsen.
   for (const [namn, k] of Object.entries(bank.konton)) {
@@ -322,6 +345,7 @@ module.exports = {
   init({ board, dataDir }) {
     fil = path.join(dataDir, 'bank.json');
     try { bank = { ...bank, ...JSON.parse(fs.readFileSync(fil, 'utf8')) }; } catch {}
+    bank.vinst = bank.vinst || 0; bank.partners = bank.partners || {};
     bank.säkerhet = { vakter: MIN_VAKTER, beredskap: 1, höjd: 0, avvärjda: 0, rån: 0, rond: 0, ...(bank.säkerhet || {}) };
     setInterval(() => { try { takt(board); } catch (err) { console.error('[mybank] takt:', err.message); } }, TAKT_MS);
   },
@@ -333,11 +357,12 @@ module.exports = {
     if (req.method === 'GET' && (p === '/' || p === '/lage')) {
       const konton = Object.entries(bank.konton).map(([namn, k]) => ({
         namn, saldo: Math.round(k.saldo), skuld: Math.round(skuld(k)), kreditvärdighet: k.kreditvärdighet, ägd: k.ägd,
+        partner: bank.partners[namn] ? Math.round(bank.partners[namn].utdelat) : null,
         inkasso: Math.max(0, ...k.lån.map(l => l.steg)), lån: k.lån.length,
       })).sort((a, b) => b.ägd - a.ägd || b.skuld - a.skuld);
       const ägda = konton.filter(k => k.ägd > 50).length;
       const säk = bank.säkerhet;
-      return svara(200, { säkerhet: { vakter: säk.vakter, beredskap: säk.beredskap, nivå: NIVÅ[säk.beredskap], avvärjda: säk.avvärjda, rån: säk.rån, lista: vaktlista() }, valuta: VALUTA, valutareform: bank.valutareform, styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
+      return svara(200, { säkerhet: { vakter: säk.vakter, beredskap: säk.beredskap, nivå: NIVÅ[säk.beredskap], avvärjda: säk.avvärjda, rån: säk.rån, lista: vaktlista() }, valuta: VALUTA, valutareform: bank.valutareform, vinst: Math.round(bank.vinst || 0), styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
     }
     if (req.method === 'POST' && p === '/betala') {
       let body = '';

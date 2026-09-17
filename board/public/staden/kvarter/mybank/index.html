@@ -28,6 +28,7 @@
   .k.uppköpt{border-color:var(--röd);background:#1c0f0f}
   .k .namn{display:flex;justify-content:space-between;font-weight:600;word-break:break-word}
   .k .namn small{color:var(--dim);font-weight:400}
+  .k.partner{border-color:var(--guld)} .partnermärke{display:inline-block;margin-top:2px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--guld)}
   .k dl{margin:4px 0 5px;display:grid;grid-template-columns:auto 1fr;gap:0 8px;font-size:12px}
   .k dt{color:var(--dim)} .k dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
   .skuld{color:var(--röd)}
@@ -51,7 +52,7 @@
   .trupp{margin:8px 0 6px;font-size:15px;line-height:1.25;letter-spacing:1px;word-break:break-all}
   .poster{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 10px;font-size:11px;color:var(--dim)}
   .poster b{color:var(--fg);font-weight:500}
-  .h.kupp-avvärjd{border-left-color:var(--grön);background:#0f2419} .h.bankrån{border-left-color:var(--röd);background:#2a0e0e} .h.beredskap{border-left-color:#ff9f43}
+  .h.kupp-avvärjd{border-left-color:var(--grön);background:#0f2419} .h.bankrån{border-left-color:var(--röd);background:#2a0e0e} .h.beredskap{border-left-color:#ff9f43} .h.partnerutdelning{border-left-color:var(--guld);background:#1f1a0c}
   footer{padding:4px 14px 10px;color:var(--dim);font-size:11px}
 </style></head>
 <body>
@@ -93,12 +94,12 @@
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const sett = new Set(); let först = true;
-const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'AVVÄRJD', 'bankrån': 'BANKRÅN', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
+const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'AVVÄRJD', 'bankrån': 'BANKRÅN', 'partnerutdelning': 'PARTNER', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
 const STEG = ['', '📨', '😠', '🕶️', '⚖️'];
 
 function rita(l) {
   document.getElementById('valuta').textContent = l.valutareform ? `Valuta: ${l.valuta} (MB)` : `Valuta: ${l.valuta || 'MyBanks'} · reform på väg`;
-  document.getElementById('ränta').textContent = `styrränta ${l.styrränta} %/min`;
+  document.getElementById('ränta').textContent = `styrränta ${l.styrränta} %/min · vinst ${l.vinst ?? 0} MB`;
   document.getElementById('andel').textContent = `${l.andel} % · ${l.ägda} kvarter uppköpta`;
   document.getElementById('andelstapel').style.width = l.andel + '%';
   document.getElementById('antal').textContent = l.konton.length ? `(${l.konton.length})` : '';
@@ -119,8 +120,9 @@ function rita(l) {
 
   const k = document.getElementById('konton');
   if (l.konton.length) k.innerHTML = l.konton.map(x => `
-    <div class="k${x.ägd > 50 ? ' uppköpt' : ''}">
+    <div class="k${x.ägd > 50 ? ' uppköpt' : ''}${x.partner != null ? ' partner' : ''}">
       <div class="namn">${esc(x.namn)} <small>${STEG[Math.min(x.inkasso, 4)] || ''}${x.ägd > 50 ? ' uppköpt' : ''}</small></div>
+      ${x.partner != null ? `<div class="partnermärke">★ valutapartner · fått ${x.partner} MB</div>` : ''}
       <dl><dt>saldo</dt><dd>${x.saldo} MB</dd><dt>skuld</dt><dd class="${x.skuld ? 'skuld' : ''}">${x.skuld} MB</dd><dt>kredit</dt><dd>${x.kreditvärdighet}/100</dd><dt>ägd</dt><dd>${x.ägd} %</dd></dl>
       <div class="stapel"><i style="width:${x.ägd}%"></i></div>
       <button data-k="${esc(x.namn)}" ${x.skuld ? '' : 'disabled'}>${x.skuld ? 'Betala 200 MB åt dem' : 'skuldfri, än så länge'}</button>
