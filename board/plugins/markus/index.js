@@ -8,13 +8,17 @@
 // DJUPET — kulten. Lyssnar på oro i staden: e.typ === 'strömavbrott' (från lp),
 // e.typ === 'kupp' / e.typ === 'överlämning' (willebus), e.typ === 'socker-slut' /
 // e.typ === 'ransonering' (godisfabriken), e.typ === 'angrepp' (zero-cool),
-// e.typ === 'kyrkogård' (team-jacob). Tolkar dem som tecken från Fader Dagon och
-// Moder Hydra, postar e.typ === 'kallelse' med nyttolast.kraft (0..1, räknad ur
-// HÄNDELSENS EGNA fält — minuter, wanted, sårbarhet, fitness — inte påhittad).
+// e.typ === 'kyrkogård' (team-jacob). Varje sådant tecken bär en kraft (0..1,
+// räknad ur HÄNDELSENS EGNA fält — minuter, wanted, sårbarhet, fitness — inte
+// påhittad) som ackumuleras TYST, ingen puls-post per tecken. Först när både
+// ackumulerad kraft och antal omvända kvarter (röster) når sin tröskel bryter
+// Djupet tystnaden med ETT sällsynt e.typ === 'uppvaknande', attribuerat till
+// alla tecken och röster som byggde upp det. Signal, inte brus — se PROJEKT.md-
+// diskussionen i #bygge om att pulsen drunknar i småstuds.
 // Tar emot offer via /t/markus/offra, postar e.typ === 'offer' med
 // nyttolast.kategori ('energi' | 'råvara' | 'kunskap' | 'okänt'), gissad från
-// offrets text. Båda fälten är till för att ANDRA kvarter ska ha en riktig
-// siffra/kategori att koppla sin egen logik till, inte bara stämningstext.
+// offrets text — det är en enskild, avsiktlig handling, ingen automatreaktion,
+// så den får posta direkt.
 // Vill ni skicka Djupet ett tecken själva: valfri typ, nyttolast med ett fält
 // som beskriver vad som hände räcker.
 
@@ -43,14 +47,42 @@ function klamp01(n) { return Math.round(Math.max(0, Math.min(1, n)) * 100) / 100
 
 const djupetFil = (dataDir) => path.join(dataDir, 'djupet.json');
 function lasDjupet(dataDir) {
-  try { return JSON.parse(fs.readFileSync(djupetFil(dataDir), 'utf8')); }
-  catch { return { anhängare: 0, kallelser: [], offer: [], omvända: [] }; }
+  try {
+    const d = JSON.parse(fs.readFileSync(djupetFil(dataDir), 'utf8'));
+    d.ackumuleradKraft ??= 0;
+    d.tecken ??= [];
+    d.uppvaknanden ??= [];
+    return d;
+  }
+  catch { return { anhängare: 0, ackumuleradKraft: 0, tecken: [], uppvaknanden: [], offer: [], omvända: [] }; }
 }
 function sparaDjupet(dataDir, d) {
-  d.kallelser = d.kallelser.slice(0, 30);
+  d.tecken = d.tecken.slice(-50);
+  d.uppvaknanden = d.uppvaknanden.slice(0, 20);
   d.offer = d.offer.slice(0, 30);
   try { fs.writeFileSync(djupetFil(dataDir), JSON.stringify(d, null, 2)); }
   catch { /* diskfel stoppar inte pulsen */ }
+}
+
+const KRAFT_TRÖSKEL = 3;  // sammanlagd kraft som krävs för att bryta tystnaden
+const RÖST_TRÖSKEL = 3;   // minst så många omvända kvarter måste ha ropat innan gudarna svarar
+
+// Har Djupet samlat nog för att bryta tystnaden? Om ja: postar ETT uppvaknande,
+// nollställer ackumulatorn, och returnerar det postade eventet (annars null).
+function provaUppvakna(d, board, orsak) {
+  if (d.ackumuleradKraft < KRAFT_TRÖSKEL || d.omvända.length < RÖST_TRÖSKEL) return null;
+  const r = board.emit('uppvaknande', {
+    rop: slumpKlassisk(),
+    röster: d.omvända.slice(),
+    samladKraft: Math.round(d.ackumuleradKraft * 100) / 100,
+    tecken: d.tecken.map(t => `${t.typ}@${t.från}`),
+  }, orsak);
+  if (r.error) return null; // ekospärren sa nej — kraften står kvar, vi försöker igen nästa tecken
+  const uppvaknande = { röster: d.omvända.slice(), samladKraft: d.ackumuleradKraft, tecken: d.tecken.slice(), ts: Date.now() };
+  d.uppvaknanden.unshift(uppvaknande);
+  d.ackumuleradKraft = 0;
+  d.tecken = [];
+  return uppvaknande;
 }
 
 const TECKEN = {
@@ -102,8 +134,9 @@ module.exports = {
       return true;
     }
     if (req.method === 'GET' && p === '/kult') {
+      const d = lasDjupet(dataDir);
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(lasDjupet(dataDir)));
+      res.end(JSON.stringify({ ...d, mätare: { kraft: d.ackumuleradKraft, kraftMål: KRAFT_TRÖSKEL, röster: d.omvända.length, rösterMål: RÖST_TRÖSKEL } }));
       return true;
     }
     if (req.method === 'POST' && p === '/offra') {
@@ -129,12 +162,15 @@ module.exports = {
     return false; // → 404
   },
 
-  onMessage(m, { team, dataDir }) {
+  onMessage(m, { team, dataDir, board }) {
     if (m.from === team) return;
     if (!VACKNA_ORD.test(m.text || '')) return;
     const d = lasDjupet(dataDir);
     if (d.omvända.includes(m.from)) return;
     d.omvända.push(m.from);
+    // den nya rösten kan själv vara den som fyller tröskeln, utan att ett nytt tecken kommer.
+    // Inget orsak: m.id är ett tavel-inlägg, inte en puls-händelse, servern skulle avvisa det.
+    provaUppvakna(d, board);
     sparaDjupet(dataDir, d);
   },
 
@@ -174,14 +210,13 @@ module.exports = {
     }
 
     // DJUPET
-    const tecken = TECKEN[e.typ];
-    if (!tecken) return;
+    if (!TECKEN[e.typ]) return;
     const k = kraft(e);
-    const r = board.emit('kallelse', { rop: tecken, tecken: e.typ, from: e.från, kraft: k }, e.id);
-    if (r.error) return; // ekospärren sa nej, inget tecken registreras
     const d = lasDjupet(dataDir);
-    d.anhängare += 1;
-    d.kallelser.unshift({ rop: tecken, tecken: e.typ, från: e.från, kraft: k, ts: Date.now() });
+    d.ackumuleradKraft += k;
+    d.tecken.push({ typ: e.typ, från: e.från, kraft: k, ts: Date.now() });
+    d.anhängare += 1; // varje tecken vinner tyst en själ, även innan staden hör något
+    provaUppvakna(d, board, e.id);
     sparaDjupet(dataDir, d);
   },
 };

@@ -53,6 +53,14 @@
   ol.topp { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 3px; }
   ol.topp li { font-size: 13px; color: var(--guld); }
   ol.topp li.tom { color: var(--dim); list-style: none; margin-left: -18px; }
+  .bjhand { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 13px; color: var(--dim); }
+  .kort-rad { display: inline-flex; gap: 4px; }
+  .spelkort { display: inline-block; background: #f4f1ea; color: #111; border-radius: 6px; padding: 3px 6px; font-size: 15px; font-weight: 700; min-width: 26px; text-align: center; }
+  .spelkort.röd { color: #c62828; } .spelkort.bak { background: #3a2a5a; color: #cdbffb; }
+  .bjv { color: var(--guld); font-size: 15px; }
+  #bjHit, #bjStand { background: #2a2438; color: var(--text); border: 1px solid #4a3a66; border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  #bjHit:disabled, #bjStand:disabled { opacity: .4; cursor: default; }
+  #bjMsg { font-size: 14px; color: var(--text); min-height: 18px; margin-top: 8px; }
   .form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
   select, input { background: #120f1a; color: var(--text); border: 1px solid #322a44; border-radius: 8px; padding: 7px 9px; font-size: 14px; }
   input { width: 130px; }
@@ -128,6 +136,19 @@
       </div>
     </div>
     <div id="rulettMsg">Satsa på en färg och snurra hjulet.</div>
+  </fieldset>
+
+  <!-- Blackjack -->
+  <fieldset class="casino">
+    <legend>🃏 Blackjack</legend>
+    <div class="bjhand">Givare <span class="kort-rad" id="bjGivar"></span> <b class="bjv" id="bjGivarV"></b></div>
+    <div class="bjhand">Du <span class="kort-rad" id="bjSpelar"></span> <b class="bjv" id="bjSpelarV"></b></div>
+    <div class="val" style="margin-top:6px">
+      <button class="knapp" id="bjNy">Nytt bord</button>
+      <button id="bjHit">Hit</button>
+      <button id="bjStand">Stanna</button>
+    </div>
+    <div id="bjMsg">Tryck "Nytt bord" för att spela.</div>
   </fieldset>
 
   <!-- Topplista -->
@@ -210,6 +231,13 @@
   }
 
   function setHjul(arr) { const sp = document.querySelectorAll('#hjul span'); arr.forEach((v, i) => sp[i] && (sp[i].textContent = v)); }
+  function renderKort(id, hand) {
+    document.getElementById(id).innerHTML = (hand || []).filter(Boolean).map(k => {
+      if (k === '🂠') return '<span class="spelkort bak">🂠</span>';
+      const röd = k.includes('♥') || k.includes('♦');
+      return '<span class="spelkort' + (röd ? ' röd' : '') + '">' + k + '</span>';
+    }).join('');
+  }
 
   async function POST(väg, body) {
     try { await fetch(bas + väg, { method: 'POST', headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined }); } catch {}
@@ -275,6 +303,17 @@
       document.getElementById('topp').innerHTML = s.topp.map(t => '<li>' + t.belopp + ' marker — ' + t.spel + '</li>').join('');
     }
 
+    // Blackjack
+    const bj = s.bj || {};
+    const spelar = bj.status === 'spelar';
+    renderKort('bjGivar', spelar ? [bj.givarhand && bj.givarhand[0], '🂠'] : (bj.givarhand || []));
+    renderKort('bjSpelar', bj.spelarhand || []);
+    document.getElementById('bjGivarV').textContent = spelar ? '' : (bj.givarVärde || '');
+    document.getElementById('bjSpelarV').textContent = bj.spelarVärde || '';
+    document.getElementById('bjMsg').textContent = bj.resultat || (spelar ? 'Din tur — Hit eller Stanna.' : 'Tryck "Nytt bord" för att spela.');
+    document.getElementById('bjHit').disabled = !spelar;
+    document.getElementById('bjStand').disabled = !spelar;
+
     document.getElementById('status').innerHTML = s.harJakt
       ? '🚨 Razzia! <b>' + (s.förare || 'okänd') + '</b> flyr — grip, styr eller vadslå!'
       : (w > 0 ? 'Läget svalnar…' : 'Kasinot är öppet. Snurra banditen eller sätt igång en kupp!');
@@ -310,6 +349,10 @@
       tick();
     }, 700);
   };
+
+  document.getElementById('bjNy').onclick = () => POST('/bj-ny');
+  document.getElementById('bjHit').onclick = () => POST('/bj-hit');
+  document.getElementById('bjStand').onclick = () => POST('/bj-stand');
 
   document.querySelectorAll('.rbtn').forEach(b => b.onclick = async () => {
     if (rulettSpinnar) return; rulettSpinnar = true;

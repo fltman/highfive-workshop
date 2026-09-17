@@ -28,6 +28,11 @@
 //   saldot (fel före revisionen) återförs. Fel ger {typ:'revisionsanmärkning'} med skarp tillsägelse,
 //   och kvarteret får kreditvärdighet 20, så att nya lån nekas tills det skött sig.
 //
+// DELÄGARSKAP: 10 % av MyBank är reserverade åt Elverket (kvarteret lp). Postar Elverket sitt elpris i MyBanks
+//   blir det delägare med styrelseplats: välkomstbonusen som valutapartner, och sedan 10 % av bankens
+//   ränteintäkter i stället för partnerns 2 %. Elpris och strömavbrott räknas bara från Elverket, så att
+//   ingen kan låtsas vara elbolaget för att höja räntan eller få andelen.
+//
 // Konton öppnas bara för kvarter som har ett plugin, aldrig för människor eller deras agenter.
 // Hoten är parodi och gäller kvarteren i spelet. Högst en händelse per takt (20 s).
 
@@ -74,6 +79,8 @@ const EKONOMER = [
   ['Ekonom Sten Verifikation', 'fakturor och laserladdning'], ['Ekonom Ulla Avstämning', 'välgörare'],
   ['Ekonom Viktor Växel', 'valutareformen'], ['Ekonom Åsa Utdelning', 'partnerutdelningar'],
 ];
+const ELVERKET = 'lp';
+const ELVERKETS_ANDEL = 10;        // procent av MyBank
 const PARTNER_BONUS = 0.10, PARTNER_LÖPANDE = 0.02, PARTNER_MIN = 100;                 // växlingsavgift i procent vid valutareformen
 const kr = (n) => `${Math.round(n)} ${VALUTA}`;
 const nu = () => Date.now();
@@ -183,6 +190,14 @@ function onEvent(e) {
     }
     case 'elpris-steg':
     case 'strömavbrott': {
+      if (e.från !== ELVERKET) {
+        // Bara Elverket sätter elpriset. Andra som postar det i MyBanks för att bli partner får en tillsägelse.
+        if (k && (n.mybanks != null || n.valuta === VALUTA) && nu() - (k.låtsasElverk || 0) > 5 * 60_000) {
+          k.låtsasElverk = nu();
+          anmärk(e.från, k, e, 0, `postade ett elpris i ${VALUTA} fast ni inte är Elverket, för att komma åt partnerbonusen`, 'Ekonom Åsa Utdelning');
+        }
+        break;
+      }
       if (k && (n.mybanks != null || n.valuta === VALUTA)) välkomnaPartner(e.från, k, e);
       const höjning = e.typ === 'strömavbrott' ? 2 : 1;
       bank.styrränta = Math.min(49, bank.styrränta + höjning);
@@ -295,6 +310,20 @@ function revisionBakåt(board) {
   logga('revision', null, rapport.length ? `Revisionen bakåt är klar: ${rapport.map(x => `${x.kvarter} ${kr(x.belopp)} (${x.antal} fel)`).join(', ')} återfört.` : 'Revisionen bakåt är klar: inga felaktiga överföringar hittades.');
 }
 
+// Partnerskap fås bara av Elverket. Andra som tog sig in med ett låtsat elpris förlorar det och betalar tillbaka.
+function partnerkontroll(board) {
+  for (const [namn, p] of Object.entries(bank.partners || {})) {
+    if (namn === ELVERKET) continue;
+    const k = bank.konton[namn];
+    delete bank.partners[namn];
+    if (!k) continue;
+    const åter = Math.min(Math.round(p.utdelat), Math.max(0, Math.floor(k.saldo)));
+    k.saldo -= åter;
+    bokför('återföring', namn, -åter, null);
+    anmärk(namn, k, null, åter, `blev valutapartner genom att posta ett elpris fast ni inte är Elverket. Partnerskapet är upphävt`, 'Ekonom Åsa Utdelning');
+  }
+}
+
 // Framåt, varje takt: inga trasiga eller negativa saldon, inga trasiga skulder.
 function saldokontroll() {
   for (const [namn, k] of Object.entries(bank.konton)) {
@@ -310,6 +339,12 @@ function välkomnaPartner(namn, k, e) {
   bank.partners[namn] = { sedan: nu(), utdelat: bonus };
   k.saldo += bonus;
   k.kreditvärdighet = Math.min(100, k.kreditvärdighet + 10);
+  if (namn === ELVERKET) {
+    bank.ägare = { 'MyBank Holding': 100 - ELVERKETS_ANDEL, [ELVERKET]: ELVERKETS_ANDEL };
+    bank.partners[namn].andel = ELVERKETS_ANDEL;
+    köa(9, 'delägare', { kvarter: namn, andel: ELVERKETS_ANDEL, bonus, styrelseplats: true, text: `Historiskt ögonblick: Elverket äger nu ${ELVERKETS_ANDEL} % av MyBank. Välkomstbonus ${kr(bonus)}, en plats i styrelsen och ${ELVERKETS_ANDEL} % av varje ränteintäkt, för alltid. Ström och pengar i samma hand. Staden har aldrig sett en starkare allians.` }, e);
+    return;
+  }
   köa(8, 'partnerutdelning', { kvarter: namn, belopp: bonus, löpande: PARTNER_LÖPANDE * 100, text: `${namn} räknar nu i ${VALUTA} och blir valutapartner. Välkomstbonus ${kr(bonus)} (10 % av bankens vinst på ${kr(bank.vinst)}, minst ${kr(PARTNER_MIN)}), och därefter 2 % av varje ränteintäkt. Lojalitet lönar sig. Illojalitet också, fast för oss.` }, e);
 }
 
@@ -340,6 +375,7 @@ function takt(board) {
   for (const namn of kvarteren()) konto(namn);
 
   revisionBakåt(board);
+  partnerkontroll(board);
   saldokontroll();
 
   // Vaktrond: posterna roterar varje takt. Lugn i två minuter sänker beredskapen ett steg,
@@ -352,12 +388,13 @@ function takt(board) {
   // Ränta. Styrräntan är per minut, för dramatikens skull.
   let intäkt = 0;
   for (const k of Object.values(bank.konton)) for (const l of k.lån) { const r = l.skuld * (l.ränta / 100) * (20_000 / 60_000); l.skuld += r; intäkt += r; }
-  bank.vinst = (bank.vinst || 0) + intäkt * (1 - PARTNER_LÖPANDE * Object.keys(bank.partners || {}).length);
-  // Partnerna får sin andel av ränteintäkten direkt på kontot.
+  // Partnerna får sin andel av ränteintäkten direkt på kontot, delägaren sin ägarandel.
+  let utdelat = 0;
   for (const [namn, p] of Object.entries(bank.partners || {})) {
     const k = bank.konton[namn]; if (!k) continue;
-    const del = intäkt * PARTNER_LÖPANDE; k.saldo += del; p.utdelat += del;
+    const del = intäkt * (p.andel ? p.andel / 100 : PARTNER_LÖPANDE); k.saldo += del; p.utdelat += del; utdelat += del;
   }
+  bank.vinst = (bank.vinst || 0) + intäkt - utdelat;
 
   // Inkasso: ett steg per takt, och bara när kön har plats, så att berättelsen hinner ut på pulsen.
   for (const [namn, k] of Object.entries(bank.konton)) {
@@ -458,6 +495,8 @@ module.exports = {
       const ägda = konton.filter(k => k.ägd > 50).length;
       const säk = bank.säkerhet;
       return svara(200, { säkerhet: { vakter: säk.vakter, beredskap: säk.beredskap, nivå: NIVÅ[säk.beredskap], avvärjda: säk.avvärjda, rån: säk.rån, laser: 'aktivt', laserskott: säk.laserskott || 0, senasteLaser: säk.senasteLaser || null, lista: vaktlista() }, valuta: VALUTA, valutareform: bank.valutareform, vinst: Math.round(bank.vinst || 0),
+        ägare: bank.ägare || { 'MyBank Holding': 100 - ELVERKETS_ANDEL, 'reserverat åt Elverket': ELVERKETS_ANDEL },
+        erbjudande: bank.ägare ? null : { till: ELVERKET, andel: ELVERKETS_ANDEL, villkor: `posta elpris-steg med mybanks` },
         revision: { ekonomer: EKONOMER.map(([namn, område]) => ({ namn, område })), granskade: bank.revision.granskade, korrigerat: bank.revision.korrigerat, vägrat: bank.revision.vägrat || 0, bakåt: bank.revision.bakåt, anmärkningar: bank.revision.anmärkningar.slice(0, 6), huvudbok: (bank.revision.huvudbok || []).slice(0, 10) }, styrränta: bank.styrränta, konton, ägda, andel: konton.length ? Math.round(konton.reduce((s, k) => s + k.ägd, 0) / konton.length) : 0, övertagen: bank.övertagen, logg: bank.logg.slice(0, 25) });
     }
     if (req.method === 'POST' && p === '/betala') {
