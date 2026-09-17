@@ -31,6 +31,7 @@
   h2{margin:0 0 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:600}
   .konton{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px}
   .k{background:var(--kort);border:1px solid var(--kant);border-radius:8px;padding:7px 9px}
+  .rykte{display:block;margin:2px 0 0;font-size:11px;color:#c9b8ff;font-style:italic}
   .k.uppköpt{border-color:var(--röd);background:#1c0f0f}
   .k .namn{display:flex;justify-content:space-between;font-weight:600;word-break:break-word}
   .k .namn small{color:var(--dim);font-weight:400}
@@ -75,7 +76,7 @@
   .trupp{margin:8px 0 6px;font-size:15px;line-height:1.25;letter-spacing:1px;word-break:break-all}
   .poster{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 10px;font-size:11px;color:var(--dim)}
   .poster b{color:var(--fg);font-weight:500}
-  .h.kupp-avvärjd{border-left-color:var(--grön);background:#0f2419} .h.bankrån{border-left-color:var(--röd);background:#2a0e0e} .h.beredskap{border-left-color:#ff9f43} .h.delägare{border-left-color:#f4d35e;background:#2a2208} .h.revisionsanmärkning{border-left-color:var(--röd);background:#1c0f0f} .h.revision{border-left-color:#8ecae6} .h.partnerutdelning{border-left-color:var(--guld);background:#1f1a0c}
+  .h.kupp-avvärjd{border-left-color:var(--grön);background:#0f2419} .h.bankrån{border-left-color:var(--röd);background:#2a0e0e} .h.beredskap{border-left-color:#ff9f43} .h.styrelsekupp{border-left-color:#b388ff;background:#1b1230} .h.rykte{border-left-color:#c9b8ff;font-style:italic} .h.delägare{border-left-color:#f4d35e;background:#2a2208} .h.revisionsanmärkning{border-left-color:var(--röd);background:#1c0f0f} .h.revision{border-left-color:#8ecae6} .h.partnerutdelning{border-left-color:var(--guld);background:#1f1a0c}
   footer{padding:4px 14px 10px;color:var(--dim);font-size:11px}
 </style></head>
 <body>
@@ -127,13 +128,13 @@
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const sett = new Set(); let först = true; let senasteEld = null;
-const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'LASERLARM', 'bankrån': 'BANKRÅN', 'partnerutdelning': 'PARTNER', 'revisionsanmärkning': 'SKARP TILLSÄGELSE', 'delägare': 'DELÄGARE', 'revision': 'revision', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
+const TYPNAMN = { 'konto-öppnat': 'nytt konto', 'lån-beviljat': 'lån', 'lån-nekat': 'nekat', 'lån-erbjudande': 'erbjudande', 'räntehöjning': 'ränta', 'påminnelse': 'påminnelse', 'inkasso': 'inkasso', 'utmätning': 'utmätning', 'uppköp': 'uppköp', 'stadsövertagande': 'ÖVERTAGANDE', 'valutareform': 'VALUTAREFORM', 'kupp-avvärjd': 'LASERLARM', 'bankrån': 'BANKRÅN', 'partnerutdelning': 'PARTNER', 'revisionsanmärkning': 'SKARP TILLSÄGELSE', 'delägare': 'DELÄGARE', 'styrelsekupp': 'STYRELSEKUPP', 'rykte': 'rykte', 'revision': 'revision', 'beredskap': 'beredskap', 'välgörare': 'välgörare', 'kvitto': 'kvitto' };
 const STEG = ['', '📨', '😠', '🕶️', '⚖️'];
 
 function rita(l) {
   document.getElementById('valuta').textContent = l.valutareform ? `Valuta: ${l.valuta} (MB)` : `Valuta: ${l.valuta || 'MyBanks'} · reform på väg`;
   document.getElementById('ränta').textContent = `styrränta ${l.styrränta} %/min · vinst ${l.vinst ?? 0} MB`;
-  document.getElementById('andel').textContent = `${l.andel} % · ${l.ägda} kvarter uppköpta`;
+  document.getElementById('andel').textContent = `${l.andel} % · ${l.ägda} kvarter uppköpta · ${l.styrelsekupper || 0} styrelsekupper`;
   document.getElementById('andelstapel').style.width = l.andel + '%';
   document.getElementById('antal').textContent = l.konton.length ? `(${l.konton.length})` : '';
   if (l.ägare) document.getElementById('ägarbok').innerHTML = 'Ägare: ' + Object.entries(l.ägare).map(([n, a]) => `<span><b>${esc(n === 'lp' ? 'Elverket' : n)}</b> ${a} %</span>`).join(' · ');
@@ -179,6 +180,7 @@ function rita(l) {
   const k = document.getElementById('konton');
   if (l.konton.length) k.innerHTML = l.konton.map(x => `
     <div class="k${x.ägd > 50 ? ' uppköpt' : ''}${x.partner != null ? ' partner' : ''}">
+      ${x.rykte ? '<span class="rykte">🕵️ okända köpare rör sig kring bolaget</span>' : ''}
       <div class="namn">${esc(x.namn)} <small>${STEG[Math.min(x.inkasso, 4)] || ''}${x.ägd > 50 ? ' uppköpt' : ''}</small></div>
       ${x.partner != null ? `<div class="partnermärke">★ valutapartner · fått ${x.partner} MB</div>` : ''}
       <dl><dt>saldo</dt><dd>${x.saldo} MB</dd><dt>skuld</dt><dd class="${x.skuld ? 'skuld' : ''}">${x.skuld} MB</dd><dt>kredit</dt><dd>${x.kreditvärdighet}/100</dd><dt>ägd</dt><dd>${x.ägd} %</dd></dl>
