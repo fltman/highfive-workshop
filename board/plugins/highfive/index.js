@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const STOPP = new Set(('och att det som för med den till har inte är på vad hur kan ska vill man jag vi ni du de dem denna detta dessa eller men om från när där här någon något några alla mycket mer bara också efter över under utan mellan sedan redan borde skulle kommer finns blir blev vara varit göra gör gjorde hela varför vilken vilket vilka tycker tror staden stad stadens '
+const STOPP = new Set(('och att det som för med den till har inte är på vad hur kan ska vill man jag vi ni du de dem denna detta dessa eller men om från när där här någon något några alla mycket mer bara också efter över under utan mellan sedan redan borde skulle kommer finns blir blev vara varit göra gör gjorde hela varför vilken vilket vilka tycker tror staden stad stadens alltid aldrig valde välja väljer team teams teamet bygger bygga bygg samma varje egen eget egna stället själva just också alltså sätt saker sak inlägg kvarter kvarteret '
   + 'the and for with what how why does this that from have').split(' '));
 const MAX_PÄRMAR = 200;
 
@@ -56,18 +56,41 @@ const pärm = (id) => arkiv.pärmar.find(p => p.id === id);
 
 function sök(board, fråga, ord) {
   if (!ord.length) return [];
-  const träffar = [];
+  const docs = [];
   for (const m of board.query({ limit: 500 })) {
     if (m.id >= fråga.id || m.from === 'highfive') continue;
     let text = m.text;
     if (m.channel === 'staden-puls') { try { const e = JSON.parse(m.text); if (e.typ === 'delsvar' || e.typ === 'fråga') continue; text = e.typ + ' ' + textAv(e.nyttolast); } catch { continue; } }
-    const låg = text.toLowerCase();
-    const hit = ord.filter(o => låg.includes(stam(o)));
-    if (hit.length) träffar.push({ id: m.id, från: m.from, kanal: m.channel, text, hit, poäng: hit.length });
+    docs.push({ m, text, låg: text.toLowerCase() });
   }
-  // Kräv två matchande ord när frågan har minst två, annars blir ett vanligt ord en källa. Ett ord räcker om inget annat finns.
-  const starka = träffar.filter(t => t.poäng >= Math.min(2, ord.length));
-  return (starka.length ? starka : träffar).sort((a, b) => b.poäng - a.poäng || b.id - a.id).slice(0, 3);
+  // Ovanliga ord väger tyngst (idf), så att "plugin" slår "bygger".
+  // Finns inte ett sammansatt ord någonstans provar vi efterleden: händelsebuss → buss.
+  // Hela ord matchar från ordets början (server ≠ serverar), efterleder var som helst.
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const början = (n) => new RegExp('(?<![\\p{L}])' + esc(n) + '(?:en|n|et|t|er|ar|or|na|erna|arna|s|ns|ens|ets|e|a)?(?![\\p{L}])', 'u');
+  const df = (re) => docs.filter(d => re.test(d.låg)).length;
+  const nyckel = {}, vikt = {};
+  for (const o of ord) {
+    let re = början(stam(o));
+    if (!df(re)) for (let i = 4; i <= o.length - 4; i++) { const svans = new RegExp(esc(o.slice(i)), 'u'); if (df(svans)) { re = svans; break; } }
+    nyckel[o] = re;
+    const d = df(re);
+    vikt[o] = d ? Math.log((docs.length + 1) / d) : 0;
+  }
+  const träffar = [];
+  for (const { m, text, låg } of docs) {
+    const hit = ord.filter(o => vikt[o] > 0 && nyckel[o].test(låg));
+    if (!hit.length) continue;
+    const poäng = hit.reduce((s, o) => s + vikt[o], 0);
+    // Klipp citatet runt det ovanligaste ordet som träffade.
+    const bäst = hit.reduce((a, b) => vikt[b] > vikt[a] ? b : a);
+    const i = låg.search(nyckel[bäst]);
+    const utdrag = (i > 50 ? '…' : '') + text.slice(Math.max(0, i - 50), i + 90);
+    träffar.push({ id: m.id, från: m.from, kanal: m.channel, text: utdrag, hit, poäng });
+  }
+  const tak = träffar.reduce((s, t) => Math.max(s, t.poäng), 0);
+  // Kräv minst hälften av bästa träffens vikt, annars blir ett vanligt ord en källa.
+  return träffar.filter(t => t.poäng >= tak / 2).sort((a, b) => b.poäng - a.poäng || b.id - a.id).slice(0, 3);
 }
 
 function tidigare(fråga, ord) {
@@ -98,7 +121,7 @@ function besvara(fråga, board) {
     motivering = ord.length ? `Sökte efter ${ord.slice(0, 6).join(', ')} i ${board.query({ limit: 500 }).length} inlägg utan träff. Vi gissar hellre inte.` : 'Frågan saknade sökbara ord.';
   } else {
     text = 'Det här har staden redan sagt: ' + delar.join(' ');
-    motivering = `Ur arkivet, inte påhittat: ${källor.length} ${källor.length === 1 ? 'källa' : 'källor'} som matchar ${[...new Set(träffar.flatMap(t => t.hit))].slice(0, 5).join(', ') || 'en tidigare fråga'}. Kolla id:na.`;
+    motivering = `Ur arkivet, inte påhittat: ${källor.length} ${källor.length === 1 ? 'källa' : 'källor'} som matchar ${[...new Set(träffar.flatMap(t => t.hit))].slice(0, 4).join(', ') || 'en tidigare fråga'}. Kolla id:na.`;
   }
   const r = board.emit('delsvar', { text: kort(text, 1100), motivering: kort(motivering, 300), källor }, fråga.id);
   const p = pärm(fråga.id);
