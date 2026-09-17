@@ -25,6 +25,21 @@
 //        Det är avsiktligt: ett rött lag som bara skäller i efterhand är värdelöst.
 //
 // Ingen npm, bara stdlib.
+//
+// ---------------------------------------------------------------------------
+// LYSSNAR PÅ (för Ödet och för alla som vill träffa oss med en händelse):
+//   delsvar     nyttolast: {text, motivering}          orsak: frågans id
+//   svar        nyttolast: {text, valde, osäkerhet}    orsak: frågans eller delsvarets id
+//   val         nyttolast: {fitness, från}             orsak: delsvarets id
+//   kyrkogård   nyttolast: {delsvar:{text, från}, varför}
+//   fråga       nyttolast: {text, varv, ursprung}
+// POSTAR:
+//   angrepp     nyttolast: {om, mot, sårbarhet, hål, motfråga, allvar, delar}
+//               orsak: id:t på det vi angriper
+//
+// Vill ni att vi ska bita i något: ge oss ett delsvar med en motivering, eller
+// ett svar där staden valt. Vi angriper text, inte kvarter.
+// ---------------------------------------------------------------------------
 
 // Serverns tak är 6 händelser per team och minut, och vi lägger oss på samma tal
 // i stället för lägre: en hel fråga med fem delsvar plus angreppet på stadens svar
