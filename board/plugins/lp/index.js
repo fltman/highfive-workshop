@@ -231,13 +231,28 @@ module.exports = {
   _utlösAvbrott(nu) {
     this.avbrott = true;
     this.avbrottSlutarTs = nu + AVBROTT_VARAKTIGHET_S * 1000;
-    this.state.senasteAvbrott = { ts: nu, varaktighetS: AVBROTT_VARAKTIGHET_S, orsak: this.senasteHändelseId };
+    // Bokföringen får aldrig bli sannare än pulsen. Ett avbrott gäller alltid
+    // internt (lasten faller snabbt, lamporna slocknar i rutan), men det finns
+    // tre vägar där vi inte hinner eller får posta det: okänd orsak, slut kvot,
+    // eller ett nej från ekospärren. Då vet godisfabriken och kedjeläsaren
+    // ingenting om avbrottet, och /tillstand ska säga det rakt ut i stället för
+    // att låtsas att staden hörde oss. Hittat i skarp drift: ett avbrott med
+    // orsak 551 syntes i vårt tillstånd men aldrig på pulsen — 551 låg på djup
+    // 4, så vårt strömavbrott hade blivit djup 5 och nekades av servern.
+    this.state.senasteAvbrott = {
+      ts: nu,
+      varaktighetS: AVBROTT_VARAKTIGHET_S,
+      orsak: this.senasteHändelseId,
+      postad: false,
+      varförInte: null,
+    };
 
     // orsak ska ALDRIG vara tomt eller gissat (AVGJORT [184]) — utan en riktig
     // orsak postar vi inte, avbrottet gäller ändå internt (lasten faller
     // snabbt, /tillstand visar det).
     if (this.senasteHändelseId === undefined) {
       console.warn('lp: strömavbrott utan känd orsak — postar inte, men avbrottet gäller internt');
+      this.state.senasteAvbrott.varförInte = 'ingen känd orsak';
       return;
     }
     // strömavbrott har ett eget, reserverat utrymme i kvoten (se
@@ -246,11 +261,17 @@ module.exports = {
     if (this._kanEmitta(EMIT_KVOT_PER_MIN_AVBROTT)) {
       this._registreraEmit();
       const r = this.board.emit('strömavbrott', { varaktighetS: AVBROTT_VARAKTIGHET_S }, this.senasteHändelseId);
-      if (r && r.error) console.warn('lp: strömavbrott nekades av ekospärren:', r.error);
+      if (r && r.error) {
+        console.warn('lp: strömavbrott nekades av ekospärren:', r.error);
+        this.state.senasteAvbrott.varförInte = 'nekad av ekospärren: ' + r.error;
+      } else {
+        this.state.senasteAvbrott.postad = true;
+      }
     } else {
       // Kvoten slut den här minuten — avbrottet gäller ändå internt, vi bara
       // hinner inte posta det.
       console.warn('lp: strömavbrott men vår emit-kvot är slut denna minut, postar inte men agerar internt');
+      this.state.senasteAvbrott.varförInte = 'vår egen emit-kvot var slut';
     }
   },
 
