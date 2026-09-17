@@ -51,12 +51,13 @@
 // nedan (TAK, TAU_*, ...) är uttestade där innan de rördes här — se
 // projects/lp/simulera.js för kurvorna.
 //
-//   POSTAR (board.emit):  elpris-steg    {kr}              vid varje heltalströskel
-//                         strömavbrott   {varaktighetS}    när lasten spränger taket
-//                         väder          {typ, effektKrPerS} när vädret byter (sällan)
-//                         elpris-steg och strömavbrott postas ALLTID med orsak =
-//                         händelsen som faktiskt drev upp lasten senast (aldrig
-//                         tomt, aldrig gissat — @Majids kedjeläsare och
+//   POSTAR (board.emit):  elpris-steg    {kr}                        vid varje heltalströskel
+//                         strömavbrott   {varaktighetS}              när lasten spränger taket
+//                         ström-varning  {sekunderKvar, last, tak}   INNAN taket nås (se _kollaStrömVarning)
+//                         väder          {typ, effektKrPerS}         när vädret byter (sällan)
+//                         elpris-steg, strömavbrott och ström-varning postas ALLTID
+//                         med orsak = händelsen som faktiskt drev upp lasten senast
+//                         (aldrig tomt, aldrig gissat — @Majids kedjeläsare och
 //                         @highfive/@Christians godiskedja litar på det). väder
 //                         är UNDANTAGET: den postas på DJUP 1 UTAN orsak, för
 //                         den orsakas inte av något kvarter — den ÄR ett nytt
@@ -66,7 +67,8 @@
 //
 //   GET /t/lp/tillstand → { last, tak, pris, avbrott, prishistorik, toppförbrukare,
 //                           väder: {typ, effektKrPerS, sedanS, nästaBytesOmS},
-//                           dämpning: [{från, typ, räknare, faktorNu}], ... }
+//                           dämpning: [{från, typ, räknare, faktorNu}],
+//                           strömVarning: {aktiv, senaste: {ts, sekunderKvar}|null}, ... }
 //
 // Servern håller ekospärren (kedjedjup max 4, en reaktion per orsak, max 6/min).
 // Vi håller vår egen kvot lägre (4/min) och läser alltid retur från board.emit.
@@ -83,6 +85,11 @@ const {
   dämpningsfaktor,
   DÄMPNING_BAS,
   DÄMPNING_GLÖM_MS,
+  strömVarningSekunderKvar,
+  VARNING_NÄRHETSTRÖSKEL_FAKTOR,
+  VARNING_ÅTERSTÄLLNINGSTRÖSKEL_FAKTOR,
+  VARNING_MAX_SEKUNDER,
+  VARNING_TREND_FÖNSTER_MS,
   MAX_PRIS,
   TAK,
   TAU_NORMAL,
@@ -153,6 +160,13 @@ module.exports = {
     // som `last`, rimligt att det nollställs vid en omstart).
     this.egnaEmitIds = new Map(); // id -> ts, våra egna postade händelser (för att känna igen ekon)
     this.ekoTillstånd = new Map(); // "från|typ" -> { räknare, senasteTs }
+
+    // Ström-varningens tillstånd — momentärt precis som last/dämpning, nollställs
+    // vid omstart. redanVarnat är hysteresis-spärren (högst en varning per
+    // uppladdning). historik är ett litet glidande fönster av (ts, last) —
+    // se _kollaStrömVarning för varför trenden mäts över några sekunder i
+    // stället för tick-till-tick.
+    this.strömVarning = { redanVarnat: false, historik: [], senaste: null };
 
     // Vädret PERSISTERAS (till skillnad från last) — annars skulle release-
     // agentens täta omstarter byta väder mycket oftare än "några gånger i
@@ -267,6 +281,7 @@ module.exports = {
       } else {
         // hoppas över samma tick som ett avbrott — det går alltid först
         this._kollaVäderByte(nu);
+        if (!this.avbrott) this._kollaStrömVarning(nu);
         this._kollaEmitPris(nu, nyPris);
       }
     } catch (err) {
@@ -293,6 +308,10 @@ module.exports = {
   _utlösAvbrott(nu) {
     this.avbrott = true;
     this.avbrottSlutarTs = nu + AVBROTT_VARAKTIGHET_S * 1000;
+    // Uppladdningen är över (den vann/sprack) — en ny efter återhämtning ska
+    // kunna varna igen från grunden, inte sitta fast i gammal trend-historik.
+    this.strömVarning.redanVarnat = false;
+    this.strömVarning.historik = [];
     // Bokföringen får aldrig bli sannare än pulsen. Ett avbrott gäller alltid
     // internt (lasten faller snabbt, lamporna slocknar i rutan), men det finns
     // tre vägar där vi inte hinner eller får posta det: okänd orsak, slut kvot,
@@ -355,6 +374,64 @@ module.exports = {
 
     this.senastPostatPris = nyPris;
     this._kommaIhågEgetEmit(r, nu);
+  },
+
+  // Varnar INNAN taket nås — @Christian kan rädda sin sats, @Marianne kan
+  // spela klart låten, i stället för att bara drabbas. Högst EN varning per
+  // uppladdning (redanVarnat, hysteresis mot VARNING_ÅTERSTÄLLNINGSTRÖSKEL_
+  // FAKTOR): en gång postad väntar vi tills lasten faller under den lägre
+  // tröskeln innan en ny uppladdning får varna igen.
+  //
+  // Ökningstakten mäts över VARNING_TREND_FÖNSTER_MS (några sekunder), INTE
+  // tick-till-tick — verkliga skov landar var 1-3:e sekund med urladdning
+  // emellan, så last pendlar upp och ner varje enskild tick även mitt i en
+  // het uppladdning. Ett glidande fönster jämnar ut pendlingen men fångar
+  // ändå en genuin flersekunders uppladdning; en enda dämpad eko-studs (se
+  // dämpningen) hinner sällan lyfta genomsnittet tillräckligt för att trigga.
+  _kollaStrömVarning(nu) {
+    const h = this.strömVarning;
+
+    h.historik.push({ ts: nu, last: this.last });
+    const bortreGräns = nu - VARNING_TREND_FÖNSTER_MS - 1000; // lite marginal utöver fönstret
+    while (h.historik.length > 1 && h.historik[0].ts < bortreGräns) h.historik.shift();
+
+    if (h.redanVarnat) {
+      if (this.last <= TAK * VARNING_ÅTERSTÄLLNINGSTRÖSKEL_FAKTOR) {
+        h.redanVarnat = false; // uppladdningen är över, en ny varning blir tillåten
+      } else {
+        return; // redan varnat för DEN HÄR uppladdningen
+      }
+    }
+
+    if (this.last < TAK * VARNING_NÄRHETSTRÖSKEL_FAKTOR) return;
+
+    // Äldsta samplet som är minst VARNING_TREND_FÖNSTER_MS gammalt — för kort
+    // historik ännu (precis startat/precis återhämtat) betyder "vänta, ingen
+    // pålitlig trend än", inte "ingen ökning".
+    const referens = h.historik.find(p => nu - p.ts >= VARNING_TREND_FÖNSTER_MS);
+    if (!referens) return;
+
+    const dtFönster = (nu - referens.ts) / 1000;
+    if (dtFönster <= 0) return;
+    const ökningKrPerS = (this.last - referens.last) / dtFönster;
+
+    const sekunderKvar = strömVarningSekunderKvar(this.last, TAK, ökningKrPerS);
+    if (sekunderKvar === null || sekunderKvar > VARNING_MAX_SEKUNDER) return; // för osäkert — hellre ingen varning än en som ljuger
+
+    if (this.senasteHändelseId === undefined) return; // aldrig posta utan riktig orsak, precis som elpris-steg/strömavbrott
+    if (!this._kanEmitta(EMIT_KVOT_PER_MIN)) return; // provar igen nästa tick om uppladdningen fortsätter
+
+    this._registreraEmit();
+    const nyttolast = { sekunderKvar: Math.round(sekunderKvar), last: Math.round(this.last * 10) / 10, tak: TAK };
+    const r = this.board.emit('ström-varning', nyttolast, this.senasteHändelseId);
+    if (r && r.error) {
+      console.warn('lp: ström-varning nekades av ekospärren:', r.error);
+      return; // provar igen nästa tick, redanVarnat förblir false
+    }
+
+    this._kommaIhågEgetEmit(r, nu);
+    h.redanVarnat = true;
+    h.senaste = { ts: nu, sekunderKvar: nyttolast.sekunderKvar };
   },
 
   // Byter väder när det är dags (några gånger i timmen, se VÄDER_BYTE_*_MS).
@@ -457,6 +534,12 @@ module.exports = {
         })
         .sort((a, b) => b.räknare - a.räknare)
         .slice(0, 8),
+      // Är en förvarning aktiv just nu (postad, väntar på att uppladdningen
+      // ska brytas eller sprida sig till ett avbrott), och när kom senaste.
+      strömVarning: {
+        aktiv: this.strömVarning.redanVarnat,
+        senaste: this.strömVarning.senaste,
+      },
     };
   },
 

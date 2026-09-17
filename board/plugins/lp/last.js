@@ -160,6 +160,49 @@ function slumpaVäder(föregående) {
   return val[Math.floor(Math.random() * val.length)];
 }
 
+// ---------- ström-varning ----------
+// Elverket är annars passivt — vi tar betalt och rapporterar, men ingen
+// BEHÖVER oss. En varning INNAN taket nås ger andra kvarter (@Christian,
+// @Marianne) ett beslut i stället för ett öde. sekunderKvar är bara en
+// uppskattning: hur lång tid till taket om lasten fortsätter öka i NUVARANDE
+// takt — inget mer avancerat än så, och "hellre ingen varning än en som ljuger".
+//
+// index.js/simulera.js håller själva tillståndsmaskinen (samma mönster som
+// avbrott/väderbyte redan gör), men delar de här konstanterna och ETA-formeln
+// så att "en varning per uppladdning" beter sig identiskt i simulering och
+// skarp drift:
+//   - NÄRHETSTRÖSKEL_FAKTOR: lasten måste vara minst denna andel av taket
+//     innan vi ens överväger en varning — ingen anledning att varna vid låg last.
+//   - TREND_FÖNSTER_MS: ökningstakten mäts som (last NU − last för såhär
+//     länge sedan) / förfluten tid — INTE tick-till-tick, för verkliga skov
+//     landar var 1-3:e sekund med urladdning emellan, så last pendlar upp och
+//     ner varje enskild tick även mitt i en het uppladdning. Ett litet
+//     glidande fönster (några sekunder) jämnar ut den naturliga pendlingen
+//     men fångar ändå en genuin flersekunders uppladdning. En enda studs
+//     (t.ex. en dämpad eko-räntehöjning, se dämpningen ovan) hinner sällan
+//     lyfta genomsnittet över fönstret tillräckligt för att trigga.
+//   - MAX_SEKUNDER: uppskattningen får inte peka längre bort än så här många
+//     sekunder — annars är den för osäker för att vara en äkta "varning".
+//   - ÅTERSTÄLLNINGSTRÖSKEL_FAKTOR: "redan varnat"-läget släpper först när
+//     lasten faller under DENNA (lägre) andel av taket — en ny uppladdning,
+//     en ny varning. Gapet mot NÄRHETSTRÖSKEL_FAKTOR är medvetet, annars
+//     skulle en last som studsar precis vid gränsen kunna trigga om och om igen.
+const VARNING_NÄRHETSTRÖSKEL_FAKTOR = 0.5;
+const VARNING_ÅTERSTÄLLNINGSTRÖSKEL_FAKTOR = 0.3;
+const VARNING_MAX_SEKUNDER = 25;
+const VARNING_TREND_FÖNSTER_MS = 5000;
+
+// Ren ETA-matte: last, tak, observerad ökningstakt (kr/sekund, NETTO efter
+// urladdning/väder) → sekunder kvar, eller null om gissningen vore orimlig
+// (lasten faller/står still, redan vid/över taket, eller inte ett användbart
+// ändligt positivt tal).
+function strömVarningSekunderKvar(last, tak, ökningstaktKrPerS) {
+  if (!(tak > 0) || !(ökningstaktKrPerS > 0)) return null;
+  if (last >= tak) return null;
+  const sekunder = (tak - last) / ökningstaktKrPerS;
+  return Number.isFinite(sekunder) && sekunder > 0 ? sekunder : null;
+}
+
 module.exports = {
   laddaUpp,
   urladda,
@@ -182,4 +225,9 @@ module.exports = {
   solFaktor,
   väderEffektKrPerS,
   slumpaVäder,
+  VARNING_NÄRHETSTRÖSKEL_FAKTOR,
+  VARNING_ÅTERSTÄLLNINGSTRÖSKEL_FAKTOR,
+  VARNING_MAX_SEKUNDER,
+  VARNING_TREND_FÖNSTER_MS,
+  strömVarningSekunderKvar,
 };

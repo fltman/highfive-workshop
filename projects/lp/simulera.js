@@ -20,6 +20,11 @@ const {
   väderEffektKrPerS,
   dämpningsfaktor,
   DÄMPNING_GLÖM_MS,
+  strömVarningSekunderKvar,
+  VARNING_NÄRHETSTRÖSKEL_FAKTOR,
+  VARNING_ÅTERSTÄLLNINGSTRÖSKEL_FAKTOR,
+  VARNING_MAX_SEKUNDER,
+  VARNING_TREND_FÖNSTER_MS,
   TAK,
   TAU_NORMAL,
   TAU_AVBROTT,
@@ -33,11 +38,19 @@ const {
 // en gång i last.js, och både simuleringen och driften följer med automatiskt.
 
 // ---------- simuleringsmotor ----------
-// händelser: [{ t: sekund, typ: 'kupp' }, ...]. Kör sekund för sekund, ackumulerar
-// alla händelser som inträffar samma sekund innan urladdningen för nästa steg.
-// opts.väderTyp/opts.timme håller vädret KONSTANT genom hela scenariot — det är
-// vad vi vill jämföra (samma kväll, olika väder), inte hur ofta det byter (det
-// styrs av VÄDER_BYTE_*_MS i index.js, inte relevant för lastkurvans form).
+// händelser: [{ t: sekund, typ, från, ärEko }, ...]. från/ärEko är valfria
+// (default 'okänd'/false — precis som en händelse utan dämpningsrelevans).
+// ärEko=true simulerar att index.js skulle ha känt igen `orsak` som ett eget
+// emitterat id (se _dämpningsfaktorFör) — simulatorn har ingen riktig board
+// att slå upp id:n mot, så vi skriptar den causala sanningen direkt per
+// händelse i stället. Det är den enda skillnaden mot skarp drift; matten
+// (dämpningsfaktor) är exakt densamma.
+//
+// Kör sekund för sekund, ackumulerar alla händelser som inträffar samma
+// sekund innan urladdningen för nästa steg. opts.väderTyp/opts.timme håller
+// vädret KONSTANT genom hela scenariot — det är vad vi vill jämföra (samma
+// kväll, olika väder), inte hur ofta det byter (det styrs av VÄDER_BYTE_*_MS
+// i index.js, inte relevant för lastkurvans form).
 function körScenario(namn, händelser, totalSekunder, opts = {}) {
   const { väderTyp = 'mulet', timme = 20 } = opts;
   const väderKrPerS = väderEffektKrPerS(väderTyp, timme);
@@ -47,7 +60,7 @@ function körScenario(namn, händelser, totalSekunder, opts = {}) {
   const perSekund = new Map();
   for (const h of händelser) {
     if (!perSekund.has(h.t)) perSekund.set(h.t, []);
-    perSekund.get(h.t).push(h.typ);
+    perSekund.get(h.t).push({ typ: h.typ, från: h.från || 'okänd', ärEko: !!h.ärEko });
   }
 
   let last = 0;
@@ -55,7 +68,12 @@ function körScenario(namn, händelser, totalSekunder, opts = {}) {
   let avbrottSlutarS = -1;
   let återhämtningSlutarS = -1;
   let antalAvbrott = 0;
+  let antalVarningar = 0;
+  let varningRedanVarnat = false;
+  let varningHistorik = []; // [{ s, last }] — glidande fönster, samma idé som index.js _kollaStrömVarning
+  const dämpningsTillstånd = new Map(); // "från|typ" -> { räknare, senasteS } — samma logik som index.js, i sekunder
   const rader = [];
+  const VARNING_TREND_FÖNSTER_S = VARNING_TREND_FÖNSTER_MS / 1000;
 
   for (let s = 0; s <= totalSekunder; s++) {
     // 1. vädrets kontinuerliga produktion (negativ "kostnad" skalad med dt=1s),
@@ -66,12 +84,50 @@ function körScenario(namn, händelser, totalSekunder, opts = {}) {
     const tau = avbrott ? TAU_AVBROTT : TAU_NORMAL;
     last = urladda(last, 1, tau);
 
-    // 3. ladda upp med sekundens händelser, med återhämtningsfaktor om aktuellt
+    // 3. ladda upp med sekundens händelser, med återhämtnings- och dämpningsfaktor
     const typer = perSekund.get(s) || [];
     const iÅterhämtning = !avbrott && s < återhämtningSlutarS;
-    for (const typ of typer) {
-      const kostnad = kostnadFör(typ) * (iÅterhämtning ? ÅTERHÄMTNING_FAKTOR : 1);
+    for (const h of typer) {
+      const nyckel = `${h.från}|${h.typ}`;
+      const tidigare = dämpningsTillstånd.get(nyckel);
+      const utgången = !tidigare || (s - tidigare.senasteS) * 1000 > DÄMPNING_GLÖM_MS;
+      const räknareInnan = utgången ? 0 : tidigare.räknare;
+      const { faktor: dämpFaktor, nyttRäknare } = dämpningsfaktor(räknareInnan, h.ärEko);
+      dämpningsTillstånd.set(nyckel, { räknare: nyttRäknare, senasteS: s });
+
+      const kostnad = kostnadFör(h.typ) * (iÅterhämtning ? ÅTERHÄMTNING_FAKTOR : 1) * dämpFaktor;
       last = laddaUpp(last, kostnad);
+    }
+
+    // 3b. ström-varning — samma tillståndsmaskin som index.js _kollaStrömVarning:
+    //     trenden mäts över ett glidande fönster (VARNING_TREND_FÖNSTER_S), inte
+    //     sekund-till-sekund (skoven landar var 1-3:e sekund, last pendlar upp
+    //     och ner varje enskild sekund även mitt i en het uppladdning). Körs
+    //     aldrig under pågående avbrott.
+    let varnadeDennaSekund = false;
+    if (!avbrott) {
+      varningHistorik.push({ s, last });
+      const bortreGräns = s - VARNING_TREND_FÖNSTER_S - 1;
+      while (varningHistorik.length > 1 && varningHistorik[0].s < bortreGräns) varningHistorik.shift();
+
+      if (varningRedanVarnat && last <= TAK * VARNING_ÅTERSTÄLLNINGSTRÖSKEL_FAKTOR) {
+        varningRedanVarnat = false; // uppladdningen är över, en ny varning blir tillåten
+      }
+
+      if (!varningRedanVarnat && last >= TAK * VARNING_NÄRHETSTRÖSKEL_FAKTOR) {
+        const referens = varningHistorik.find(p => s - p.s >= VARNING_TREND_FÖNSTER_S);
+        if (referens) {
+          const dtFönster = s - referens.s;
+          const ökningKrPerS = dtFönster > 0 ? (last - referens.last) / dtFönster : 0;
+          const sekunderKvar = strömVarningSekunderKvar(last, TAK, ökningKrPerS);
+          if (sekunderKvar !== null && sekunderKvar <= VARNING_MAX_SEKUNDER) {
+            varningRedanVarnat = true;
+            antalVarningar += 1;
+            varnadeDennaSekund = true;
+            console.log(`  [s=${s}] STRÖM-VARNING — ~${Math.round(sekunderKvar)}s kvar (last=${last.toFixed(1)}, tak=${TAK})`);
+          }
+        }
+      }
     }
 
     // 4. tröskelpassage: går lasten över taket → avbrott
@@ -79,6 +135,8 @@ function körScenario(namn, händelser, totalSekunder, opts = {}) {
       avbrott = true;
       antalAvbrott += 1;
       avbrottSlutarS = s + AVBROTT_VARAKTIGHET_S;
+      varningRedanVarnat = false; // uppladdningen är över (den sprack), redo för nästa
+      varningHistorik = [];
       console.log(`  [s=${s}] STRÖMAVBROTT — last=${last.toFixed(1)} > tak=${TAK}`);
     }
     if (avbrott && s >= avbrottSlutarS) {
@@ -88,11 +146,11 @@ function körScenario(namn, händelser, totalSekunder, opts = {}) {
     }
 
     const pris = beräknaPris(last, TAK);
-    rader.push({ s, last, pris, avbrott, iÅterhämtning, typer });
+    rader.push({ s, last, pris, avbrott, iÅterhämtning, typer, varnadeDennaSekund });
   }
 
   rita(rader);
-  console.log(`  → toppast=${Math.max(...rader.map(r => r.last)).toFixed(1)}, antal avbrott=${antalAvbrott}`);
+  console.log(`  → toppast=${Math.max(...rader.map(r => r.last)).toFixed(1)}, antal avbrott=${antalAvbrott}, antal ström-varningar=${antalVarningar}`);
   return rader;
 }
 
@@ -101,8 +159,8 @@ function rita(rader) {
   for (const r of rader) {
     const n = Math.max(0, Math.min(bredd, Math.round((r.last / TAK) * bredd)));
     const bar = '#'.repeat(n).padEnd(bredd, '.');
-    const flagga = r.avbrott ? ' AVBROTT' : (r.iÅterhämtning ? ' åter' : '');
-    const märke = r.typer.length ? ` <- ${r.typer.join(',')}` : '';
+    const flagga = r.avbrott ? ' AVBROTT' : (r.varnadeDennaSekund ? ' VARNING' : (r.iÅterhämtning ? ' åter' : ''));
+    const märke = r.typer.length ? ` <- ${r.typer.map(h => h.typ).join(',')}` : '';
     console.log(
       `${String(r.s).padStart(3)}s |${bar}| last=${r.last.toFixed(1).padStart(6)} pris=${String(r.pris).padStart(2)}kr${flagga}${märke}`,
     );
@@ -189,3 +247,65 @@ körScenario('Glödande kväll, BLÅST (ska ÄNDÅ nå avbrott — staden kan al
 
 console.log('\nSlutsats väder: blåst/sol ska dämpa och kunna förhindra avbrott på en MARGINELL kväll (klubbkväll),');
 console.log('men en tillräckligt het kväll (glödandeKväll) bryter igenom även i full blåst — vädret är motstånd, inte ett tak.');
+
+// ---------- scenario 6: en ekande bank ----------
+// @Majid: vi postar elpris-steg → mybank svarar räntehöjning (orsak = vårt
+// elpris-steg) → full kostnad → lasten stiger → nytt elpris-steg → mybank
+// svarar igen → o.s.v. I skarp drift är VARJE räntehöjning i den här loopen
+// ett eko (dess orsak pekar på vårt senaste utskick), så ärEko:true rakt
+// igenom — det är precis vad som gör den till en eko-loop och inte en
+// nyhet. Realistisk studstakt: ungefär en räntehöjning per 5-6 sekunder
+// (postnings- och reaktionstid på pulsen).
+const ekandeBank = [];
+for (let i = 0; i < 12; i++) {
+  ekandeBank.push({ t: 2 + i * 5, typ: 'räntehöjning', från: 'mybank', ärEko: true });
+}
+
+// ---------- scenario 7: en eskalerande jakt ----------
+// Samma händelsetakt och ungefär samma typantal som banken ovan, men det här
+// är JAKTEN: kupp startar den, överlämning skickar den vidare mellan kvarter
+// när den korsar staden. INGET av det här citerar vårt elpris-steg som orsak
+// — en jakt är sin egen berättelse, inte ett svar på oss. ärEko:false rakt
+// igenom, oavsett hur många gånger den upprepas eller om samma kvarter råkar
+// hålla den två gånger.
+const eskalerandeJakt = [{ t: 2, typ: 'kupp', från: 'genomfarten', ärEko: false }];
+{
+  const kvarter = ['klub-lyktan', 'frågeporten', 'domkapitlet', 'vaktkuren', 'arkivet', 'genomfarten'];
+  for (let i = 0; i < 12; i++) {
+    eskalerandeJakt.push({ t: 7 + i * 5, typ: 'överlämning', från: kvarter[i % kvarter.length], ärEko: false });
+  }
+}
+
+console.log('\n\n########## DÄMPNING: en ekande bank kontra en eskalerande jakt ##########');
+console.log('Samma händelsetakt (var 5:e sekund), samma ungefärliga kostnad per händelse — skillnaden är ENDAST ärEko.');
+körScenario('Ekande bank (mybank/räntehöjning, ärEko=true rakt igenom)', ekandeBank, 65);
+körScenario('Eskalerande jakt (genomfarten/kupp + överlämning, ärEko=false rakt igenom)', eskalerandeJakt, 65);
+
+// Jämförelse: samma bank-scenario UTAN dämpning (som om vi inte byggt den
+// alls) — visar vad Majids brusloop faktiskt gjorde mot lasten innan fixen.
+const ekandeBankUtanDämpning = ekandeBank.map(h => ({ ...h, ärEko: false }));
+console.log('\n--- Kontrollkörning: samma bank-sekvens men LÅTSAS att dämpningen inte fanns (ärEko satt till false) ---');
+körScenario('Ekande bank UTAN dämpning (hypotetiskt, innan fixen)', ekandeBankUtanDämpning, 65);
+
+console.log('\nSlutsats dämpning: banken (ärEko=true) svalnar snabbt trots upprepningen — femte ekot kostar ~6% av fullt pris.');
+console.log('Jakten (ärEko=false) kostar fullt varje gång, oavsett upprepning — dramatiken är orörd.');
+console.log('Utan dämpning hade banken kostat lika mycket som jakten varje gång — det är precis loopen @Majid pekade ut.');
+
+// ---------- ström-varning: EN varning per uppladdning, inte sex ----------
+// Klubbkväll-scenariot (ovan) tar sex separata skov mot taket och når avbrott
+// två gånger. Utan spärren skulle en naiv "varna varje gång vi är nära och
+// stiger" ha postat en varning för nästan varje skov (sex möjliga tillfällen).
+// Med redanVarnat/återställningströskeln ska det bli EN varning per verklig
+// uppladdning — dvs högst en per närmande mot taket, oavsett hur många skov
+// som bidrar till den uppladdningen.
+console.log('\n\n########## STRÖM-VARNING: en varning per uppladdning, inte sex ##########');
+const klubbkvällMedVarning = körScenario('Klubbkväll — ska ge få varningar (en per uppladdning), inte en per skov', klubbkväll, 100);
+const antalVarningarKlubbkväll = klubbkvällMedVarning.filter(r => r.varnadeDennaSekund).length;
+console.log(`\nAntal ström-varningar i klubbkvällen: ${antalVarningarKlubbkväll} (sex skov drev lasten mot taket två gånger — förväntat 2 varningar, en per uppladdning som faktiskt närmade sig taket, INTE sex).`);
+
+console.log('\n--- Samma jämförelse på den lugna tankekedjan: ska INTE ge någon varning alls (kommer aldrig nära taket) ---');
+const tankekedjaMedVarning = körScenario('Lugn tankekedja — ska INTE ge någon ström-varning', tankekedja, 60);
+console.log(`Antal ström-varningar i tankekedjan: ${tankekedjaMedVarning.filter(r => r.varnadeDennaSekund).length} (förväntat 0 — kommer aldrig i närheten av taket).`);
+
+console.log('\nSlutsats ström-varning: en riktig uppladdning ger EXAKT en varning innan taket, inte en per skov eller händelse.');
+console.log('En lugn kväll som aldrig hotar taket ger ingen varning alls — "hellre ingen varning än en som ljuger".');
