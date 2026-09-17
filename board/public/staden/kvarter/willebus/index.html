@@ -105,9 +105,12 @@
   .spelkort.röd { color: #c62828; } .spelkort.bak { background: #3a2a5a; color: #cdbffb; }
   @keyframes deala { from { transform: translateY(-22px) rotateY(90deg); opacity: 0; } to { transform: none; opacity: 1; } }
   .bjv { color: var(--guld); font-size: 16px; font-weight: 800; }
-  #bjHit, #bjStand { background: #211836; color: var(--text); border: 1px solid #4a3a66; border-radius: 8px; padding: 9px 15px; font-size: 14px; font-weight: 700; cursor: pointer; transition: transform .1s; }
-  #bjHit:hover, #bjStand:hover { border-color: var(--lila); } #bjHit:active, #bjStand:active { transform: translateY(1px); }
-  #bjHit:disabled, #bjStand:disabled { opacity: .35; cursor: default; }
+  #bjHit, #bjStand, #pokerDra { background: #211836; color: var(--text); border: 1px solid #4a3a66; border-radius: 8px; padding: 9px 15px; font-size: 14px; font-weight: 700; cursor: pointer; transition: transform .1s; }
+  #bjHit:hover, #bjStand:hover, #pokerDra:hover { border-color: var(--lila); } #bjHit:active, #bjStand:active, #pokerDra:active { transform: translateY(1px); }
+  #bjHit:disabled, #bjStand:disabled, #pokerDra:disabled { opacity: .35; cursor: default; }
+  #pokerHand .spelkort { cursor: pointer; position: relative; }
+  #pokerHand .spelkort.hall { outline: 3px solid var(--guld); transform: translateY(-8px); box-shadow: 0 6px 12px rgba(0,0,0,.5); }
+  #pokerHand .spelkort em { position: absolute; left: 0; right: 0; bottom: -15px; font-size: 9px; font-style: normal; font-weight: 800; color: var(--guld); text-align: center; }
 
   fieldset { border: 1px solid var(--kant); border-radius: 12px; padding: 12px 14px; background: var(--panel); margin: 0; }
   legend { color: var(--guld); font-size: 13px; font-weight: 700; padding: 0 6px; }
@@ -136,7 +139,7 @@
 
   <div class="hero">
     <h1>🎰 KASINOT GENOMFARTEN</h1>
-    <div class="motto">”The house always wins”</div>
+    <div class="motto">The house always wins</div>
     <p>Stadens kasino på storskärmen. Spela tre spel — och när tre 🚔 eller en kupp slår till bryter en <b>razzia</b> ut: då jagar hela rummet tjuven tillsammans.</p>
     <div class="hjälp">
       <span class="chip">🎮 Spela bandit · roulette · blackjack</span>
@@ -146,7 +149,7 @@
   </div>
 
   <div class="rad">
-    <input id="spelarNamn" placeholder="ditt namn (för leaderboard)" maxlength="24">
+    <input id="spelarNamn" title="Ditt alias — byt om du vill" placeholder="ditt alias" maxlength="24">
     <span class="stjärnor" id="wanted">☆☆☆☆☆</span>
     <span class="chip" id="poliser" style="display:none"></span>
     <button id="ljud">🔇 siren av</button>
@@ -182,6 +185,7 @@
       <div class="flik aktiv" data-spel="bandit">🎰 Bandit</div>
       <div class="flik" data-spel="roulette">🎡 Roulette</div>
       <div class="flik" data-spel="blackjack">🃏 Blackjack</div>
+      <div class="flik" data-spel="poker">🂡 Poker</div>
     </div>
     <div class="spelkort-panel">
       <!-- Bandit -->
@@ -219,6 +223,16 @@
         </div>
         <div class="spelmsg" id="bjMsg">Tryck "Nytt bord" för att spela.</div>
       </div>
+      <!-- Poker -->
+      <div class="spel" id="spel-poker">
+        <p class="vad-är">Video poker: få fem kort, klicka för att HÅLLA dem du vill, dra om resten. Par knekt+ 10 · två par 20 · triss 30 · straight 50 · flush 70 · kåk 100 · fyrtal 200 · royal 500.</p>
+        <div class="kort-rad" id="pokerHand" style="min-height:52px"></div>
+        <div class="val" style="margin-top:8px">
+          <button class="knapp" id="pokerNy">Ny giv</button>
+          <button id="pokerDra">Dra</button>
+        </div>
+        <div class="spelmsg" id="pokerMsg">Tryck "Ny giv" för att spela.</div>
+      </div>
     </div>
   </div>
 
@@ -247,12 +261,15 @@
   const bas = '/t/willebus';
   const ikon = { in:'↘', ut:'↗', kupp:'💥', gripen:'🚔', slut:'·', patrull:'👮', delsvar:'💬', mörker:'🌑', brist:'🍬', larm:'🚨', dom:'⚖️', natt:'🌃', storlarm:'📢', kasino:'🎰', out:'·' };
   const HJUL = ['🍒','🚗','💰','💎','🚔','🍀'];
-  let platserFyllda = false, sistaTid = null, sirenPå = false, spinnar = false, rulettSpinnar = false, sistaBjSig = '';
+  let platserFyllda = false, sistaTid = null, sirenPå = false, spinnar = false, rulettSpinnar = false, sistaBjSig = '', sistaPokerSig = '', pokerHåll = [false,false,false,false,false];
 
   const namnEl = document.getElementById('spelarNamn');
-  try { namnEl.value = localStorage.getItem('willebus-namn') || ''; } catch {}
+  const alias = ['Loffe','Bagarn','Doris','Kajan','Tvillingen','Sköden','Snuten','Boss','Räven','Frken'];
+  let sparatNamn = ''; try { sparatNamn = localStorage.getItem('willebus-namn') || ''; } catch {}
+  if (!sparatNamn) { sparatNamn = alias[Math.floor(Math.random() * alias.length)] + '-' + Math.floor(10 + Math.random() * 89); try { localStorage.setItem('willebus-namn', sparatNamn); } catch {} }
+  namnEl.value = sparatNamn;
   namnEl.oninput = () => { try { localStorage.setItem('willebus-namn', namnEl.value.trim()); } catch {} };
-  const spelarNamn = () => namnEl.value.trim();
+  const spelarNamn = () => namnEl.value.trim() || sparatNamn;
 
   // flikar
   document.querySelectorAll('.flik').forEach(f => f.onclick = () => {
@@ -296,6 +313,21 @@
       const röd = k.includes('♥') || k.includes('♦');
       return '<span class="spelkort' + (röd ? ' röd' : '') + '"' + stil + '>' + k + '</span>';
     }).join('');
+  }
+
+  function renderPoker(pk) {
+    const el = document.getElementById('pokerHand');
+    el.innerHTML = (pk.hand || []).map((k, i) => {
+      const röd = k.includes('♥') || k.includes('♦');
+      const hall = (pk.status === 'dra' && pokerHåll[i]) ? ' hall' : '';
+      return '<span class="spelkort' + (röd ? ' röd' : '') + hall + '" data-i="' + i + '" style="animation-delay:' + (i * .06) + 's">' + k + (hall ? '<em>HÅLL</em>' : '') + '</span>';
+    }).join('');
+    if (pk.status === 'dra') el.querySelectorAll('.spelkort').forEach(c => c.onclick = () => {
+      const i = +c.dataset.i; pokerHåll[i] = !pokerHåll[i];
+      c.classList.toggle('hall', pokerHåll[i]);            // växla på plats, ingen omritning
+      const bef = c.querySelector('em'); if (bef) bef.remove();
+      if (pokerHåll[i]) { const e = document.createElement('em'); e.textContent = 'HÅLL'; c.appendChild(e); }
+    });
   }
 
   async function POST(väg, body) {
@@ -373,16 +405,12 @@
     document.getElementById('bjHit').disabled = !spelar;
     document.getElementById('bjStand').disabled = !spelar;
 
-    // Blackjack
-    const bj = s.bj || {};
-    const spelar = bj.status === 'spelar';
-    renderKort('bjGivar', spelar ? [bj.givarhand && bj.givarhand[0], '🂠'] : (bj.givarhand || []));
-    renderKort('bjSpelar', bj.spelarhand || []);
-    document.getElementById('bjGivarV').textContent = spelar ? '' : (bj.givarVärde || '');
-    document.getElementById('bjSpelarV').textContent = bj.spelarVärde || '';
-    document.getElementById('bjMsg').textContent = bj.resultat || (spelar ? 'Din tur — Hit eller Stanna.' : 'Tryck "Nytt bord" för att spela.');
-    document.getElementById('bjHit').disabled = !spelar;
-    document.getElementById('bjStand').disabled = !spelar;
+    // Poker (rita om bara när handen/statusen ändras, så håll-markeringar och animation inte flimrar)
+    const pk = s.poker || {};
+    const psig = JSON.stringify([pk.hand, pk.status]);
+    if (psig !== sistaPokerSig) { sistaPokerSig = psig; renderPoker(pk); }
+    document.getElementById('pokerMsg').textContent = pk.resultat || 'Tryck "Ny giv" för att spela.';
+    document.getElementById('pokerDra').disabled = pk.status !== 'dra';
 
     document.getElementById('status').innerHTML = s.harJakt
       ? '🚨 Razzia! Grip, styr eller vadslå — hela rummet mot en bil.'
@@ -408,6 +436,8 @@
   document.getElementById('bjNy').onclick = () => POST('/bj-ny', { spelare: spelarNamn() });
   document.getElementById('bjHit').onclick = () => POST('/bj-hit');
   document.getElementById('bjStand').onclick = () => POST('/bj-stand', { spelare: spelarNamn() });
+  document.getElementById('pokerNy').onclick = () => { pokerHåll = [false,false,false,false,false]; sistaPokerSig = ''; POST('/poker-ny'); };
+  document.getElementById('pokerDra').onclick = () => { sistaPokerSig = ''; POST('/poker-dra', { håll: pokerHåll, spelare: spelarNamn() }); };
 
   document.getElementById('snurra').onclick = async () => {
     if (spinnar) return; spinnar = true;
