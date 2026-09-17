@@ -217,7 +217,7 @@
       const minuter = (Array.isArray(data.minuter) ? data.minuter : []).filter(m => m && isFinite(Number(m.t))).slice().sort((a, b) => a.t - b.t);
       const minV = minuter.map(m => { let s = 0; for (const [nyckel, v] of Object.entries(m)) if (nyckel !== 't' && typeof v === 'number' && isFinite(v)) s += v; return s; });
       const minP = minuter.map(m => klamma((m.t + 30000 - start) / langd, 0, 1));   // mitt i minuten
-      let maxV = 0, maxI = -1; minV.forEach((v, i) => { if (v > maxV) { maxV = v; maxI = i; } });
+      let maxV = 0; for (const v of minV) if (v > maxV) maxV = v;   // bara kurvans höjd: vilken minut som var livligast står under Rekord och kuriosa
 
       // ---------- DOM ----------
       const tidszon = 'Europe/Stockholm'; let datumText = '';
@@ -261,8 +261,7 @@
       const kurva = api.el('canvas', { class: 'h-replay-kurva', role: 'img', 'aria-label': 'Aktivitetskurva: antal inlägg per minut under dagen.' });
       const linje = api.el('div', { class: 'h-replay-linje' }, [tid, kurva]);
       const avlast = api.el('span', { class: 'h-replay-avlast' });
-      let kurvBeskrivning = 'Kurvan visar antal inlägg per minut i alla kanaler.';
-      if (maxI >= 0 && maxV > 0) kurvBeskrivning += ' Livligast var det kl. ' + api.kl(minuter[maxI].t) + ' med ' + api.tal(maxV) + ' inlägg.';
+      let kurvBeskrivning = 'Kurvan visar antal inlägg per minut i alla kanaler. Dra i den för att spola filmen dit.';
       if (kvNoder.length) kurvBeskrivning += ' Strecken överst markerar när kvarteren gick live.';
       const kurvtext = api.el('p', { class: 'h-replay-kurvtext' }, [api.el('span', { text: kurvBeskrivning }), avlast]);
       if (!(maxV > 0)) { kurva.hidden = true; kurvtext.hidden = true; }

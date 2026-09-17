@@ -548,7 +548,9 @@
         if (e.key === 'ArrowRight') i += vald == null ? 0 : 1; else if (e.key === 'ArrowLeft') i -= vald == null ? 0 : 1;
         else if (e.key === 'PageDown') i += 12; else if (e.key === 'PageUp') i -= 12;
         else if (e.key === 'Home') i = 0; else if (e.key === 'End') i = f.length - 1;
-        else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (vald == null) visa(i, null, 'tangent'); else hoppaTill(vald); return; }
+        // Enter spolar, precis som hjälptexten säger. Mellanslag lämnas åt sidan: diagrammet är en grupp, inte en knapp,
+        // och den som klickat på det ska fortfarande kunna rulla sidan med mellanslag.
+        else if (e.key === 'Enter') { e.preventDefault(); if (vald == null) visa(i, null, 'tangent'); else hoppaTill(vald); return; }
         else if (e.key === 'Escape') { dölj(); return; }
         else return;
         e.preventDefault(); visa(i, null, 'tangent');
@@ -582,19 +584,10 @@
         p.append('. Sammanlagt stod pulsen för ', fet(summor[0]), ' av dagens ', fet(allt), ' inlägg' + (allt > 0 ? ' (' + Math.round(summor[0] / allt * 100) + ' procent)' : '') + '.');
         text.append(p);
       }
-      // Livligaste minuten: ur data.rekord om den finns där, annars räknad ur samma minutrader som diagrammet.
-      let lm = data.rekord && data.rekord.livligaste_minut;
-      if (!(lm && Number.isFinite(lm.t) && Number.isFinite(lm.antal))) {
-        lm = null;
-        for (const m of (Array.isArray(data.minuter) ? data.minuter : [])) {
-          if (!m || !Number.isFinite(m.t)) continue;
-          let antal = 0; for (const [nyckel, värde] of Object.entries(m)) { const n = Number(värde); if (nyckel !== 't' && n > 0) antal += n; }
-          if (antal > 0 && (!lm || antal > lm.antal)) lm = { t: m.t, antal };
-        }
-      }
+      // Fönstret är den här sektionens mått. Den enskilt livligaste MINUTEN hör hemma under Rekord och kuriosa,
+      // som ägnar den en egen figur: samma tal i två sektioner till hade bara varit brus.
       const p3 = api.el('p');
       if (allt === 0) p3.append('Loggen innehåller inga inlägg för den här dagen.');
-      else if (lm) p3.append('Den livligaste minuten var ', tid(lm.t), ' med ', fet(lm.antal), ' inlägg, och det tätaste femminutersfönstret var ', tid(f[toppI].t, spann(f[toppI])), ' med ', fet(f[toppI].total), '.');
       else p3.append('Det tätaste femminutersfönstret var ', tid(f[toppI].t, spann(f[toppI])), ' med ', fet(f[toppI].total), ' inlägg.');
       text.append(p3);
       el.append(text);

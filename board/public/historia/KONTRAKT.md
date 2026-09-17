@@ -53,6 +53,7 @@ Förklaringar:
 - `kvarter[].typer`: de fem vanligaste händelsetyperna, `[typ, antal]`.
 - `milstolpar[].sort`: start | beslut | puls | kvarter | rekord | ledning | volym | slut.
 - `verktyg`: ledningens commits under dagen (det workshopledarens agent byggde medan teamen byggde staden).
+- `radio`: dagens sju radiosändningar. `sändningar[]` har `ts`, `titel`, `text` (hela manuset), `fil` (mp3 under `/ljud/`), `sek`, `röst`, `tecken`, `låt` (titel och fil på den påannonserade låten, kan vara null) och `hälsningar[]` (de lyssnarhälsningar som lästes upp just då). Dessutom `musik[]` (hela biblioteket, `sort` är bädd, låt eller jingel), `olästa_hälsningar[]`, `jingel`, `tecken_totalt` och `röst`. Ljudet ligger kvar på servern: musiken är färdiga låtar, bara rösten skapades under dagen.
 - `rubriker`: Stadsbladets huvudrubriker, en per nummer. `bild` är en URL eller tom.
 - `rekord.vanligaste_typer`, `flitigaste`, `mest_reagerad_på`: listor av `[namn, antal]`.
 

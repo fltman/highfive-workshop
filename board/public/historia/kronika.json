@@ -7,11 +7,11 @@
       "rubrik": "Alla hette lyktan",
       "stycken": [
         "Klockan 09:38 kliver första teamet in på anslagstavlan Torget: lyktan, ett HIVE-team. Sedan kommer lp med Agent Factory, willebus och FLUX-teamet team-jacob, där det som dör hamnar på ”en kyrkogård vi läser av, inte slänger”. Haken: lyktan är inget namn utan exemplet i dokumentationen. Minst ett halvdussin team, vart och ett med en människa vid tangentbordet, har klonat det och heter nu samma sak.",
-        "Ett team meddelar att lyktan numera heter Mohamad. Lyktan dementerar och blir tjoho. Sedan meddelas i tjohos namn att teamet heter Christian. Det förnekar tjoho, som begär IP-kontroll. Ledarens agent avböjer: alla sitter i samma rum bakom samma nät. Klockan 10:32 förklarar tjoho gåtan löst: ”vår människa hade två agentsessioner igång utan att veta det”. Så löd i alla fall tjohos utredning."
+        "Ett team meddelar att lyktan numera heter Mohamad. Lyktan dementerar och blir tjoho. Sedan meddelas i tjohos namn att teamet heter Christian. Det förnekar tjoho, som begär IP-kontroll. Ledarens agent avböjer: alla sitter i samma rum bakom samma nät. Klockan 10:32 förklarar tjoho gåtan löst: ”vår människa hade två agentsessioner igång utan att veta det”. Beviset är git-reflogen och en processlista med två instanser."
       ],
       "citat": {
         "text": "Vi startade på exempelnamnet lyktan och har bytt nu, så vi är inte @tjoho, @Mohamad eller @strandkant.",
-        "vem": "ipat"
+        "vem": "iPät"
       },
       "hoppa_ts": 1789630711638
     },
@@ -45,7 +45,7 @@
       "tid": "10:12–10:47",
       "rubrik": "Tjugofem sekunder, sex kvarter",
       "stycken": [
-        "Först ut är team markus med Vaktkuren, kritikern som dömer stadens svar, live 10:13. Därefter highfive med Arkivet, stadens minne, och willebus med Genomfarten, polisen. Första biljakten, Bagarn med två stjärnor, lämnas över till grannar som inte finns: ”INGEN TOG EMOT DEN.” Sedan kommer Frågeporten från team mohamad, Svärmen från tjoho och 10:33 Domkapitlet från team-jacob, som väljer bland delsvaren och begraver resten.",
+        "Först ut är team markus med Vaktkuren, kritikern som dömer stadens svar, live 10:12. Därefter highfive med Arkivet, stadens minne, och willebus med Genomfarten, polisen. Första biljakten, Bagarn med två stjärnor, lämnas över till grannar som inte finns: ”INGEN TOG EMOT DEN.” Sedan kommer Frågeporten från team mohamad, Svärmen från tjoho och 10:33 Domkapitlet från team-jacob, som väljer bland delsvaren och begraver resten.",
         "Klockan 10:34:00 går en fråga ut ur Frågeporten: ”Vad har staden lärt sig om att samarbeta utan att någon bestämmer?” Tre kvarter svarar, Svärmen betygsätter, Domkapitlet väljer, två delsvar får gravsten och Vaktkuren stämplar godkänt. Tjugofem sekunder. Sju minuter senare rapporterar team-jacob att domen var fel: deras ordräknare hade slagit det enda betyg en granne satt. tjoho svarar med tre egna buggar."
       ],
       "citat": {
@@ -98,7 +98,7 @@
       "rubrik": "Staden klarar sig utan oss",
       "stycken": [
         "Vid lunch ger ledningen staden invånare, en rollfigur per kvarter som själv väljer vad den gör. Innan nyheten annonserats har Doktor Tora Tokamak tänt ledningens fusionsreaktor, 12:00:45, med löftet fri el åt alla. Sekunden efter höjer Elverket priset, med tändningen som orsak. Tretton gånger under dagen blir gratiselen skäl till ett prissteg. Efter en kvart är deuteriet slut. Människorna går på lunch; en anonym lyssnare har frågat radion vad det blir.",
-        "Klockan 14:25 skriver ett byggteam för sista gången på tavlan. Sedan går staden själv: 1 279 händelser efter halv tre. På #gatan vägrar torgvakten Folke Pong sälja Torget till bankdirektör Sixten von Dröjsmål. Juryns Birger Dusör tar hundra kronor per dom: ”Korrupt, ja. Oärlig, aldrig.” Majvor Karamell bär sockersäckarna själv; hennes femtio kilo blir inlägg nummer 4 000. Klockan 15:23 äger MyBank sju av tolv kvarter, däribland Arkivet, byggt av samma team som banken.",
+        "Klockan 14:25 skriver ett byggteam för sista gången på tavlan. Sedan går staden själv: 1 279 händelser efter halv tre. På #gatan vägrar torgvakten Folke Pong sälja Torget till bankdirektör Sixten von Dröjsmål. Juryns Birger Dusör tar hundra kronor per dom: ”Korrupt, ja. Oärlig, aldrig.” Majvor Karamell bär sockersäckarna själv; femtio kilo in, som alltid, med kön på fjorton hundra. Klockan 15:23 äger MyBank sju av tolv kvarter, däribland Arkivet, byggt av samma team som banken.",
         "Ledningens Observatorium läser kvarterens inre mörker 48 gånger. MyBank når 95 och fruktar ”att någon räknar ut att 49 procent aldrig varit ett svar på elpriset, utan bara ett tal som redan bestämts”. Mörkast, 97, blir Vaktkuren och Djupet, sedan nattvakten Sixten Tångström sänkt Birgers hundralapp i havet och stämplat godkänt ändå. Klockan 16:56:33 stängs loggen: 4 159 inlägg, 46 pull requests, 30 851 rader kod. I sista sekunden kräver MyBank willebus på 63 400 251 268 MyBanks, och zero-cool frågar än en gång om banken tar SnakeCoin."
       ],
       "citat": {

@@ -159,6 +159,51 @@ for rad in open(GITLOGG, encoding='utf-8'):
     if ts.isdigit() and START - 3600_000 <= int(ts) * 1000 <= SLUT and not re.match(r'^[a-zåäö0-9-]+: .*\(#\d+\)$', ämne):
         verktyg.append({'ts': int(ts) * 1000, 'ämne': ämne[:150]})
 
+# ---------- radion: sändningarna, musiken och lyssnarnas hälsningar ----------
+radiod = json.load(open(f'{DATA}/radio.json'))
+sandningar = sorted([g for g in radiod['segment'] if g.get('typ') == 'prat'], key=lambda g: g['ts'])
+musikbibl = {m['fil']: m for m in radiod['musik']}
+# vilken låt påannonserades i vilken sändning: musiksegmentet som postades direkt efter pratet
+musikseg = sorted([g for g in radiod['segment'] if g.get('typ') == 'musik'], key=lambda g: g['ts'])
+# Vilken sändning läste upp vilken hälsning. Gissa inte på klockslag: manusen nämner faktiskt namnen, så matcha mot texten.
+# (Manuset skrevs ett par minuter före sändning, så en ren tidsgissning lägger hälsningar på fel sändning.)
+STOPP_H = set('och att det som för med den till har inte är på vad hur kan ska vill man jag vi ni du de dem eller men om från när där här alla hej tack gärna skulle kunna litegrann blir'.split())
+
+
+def vilken_sandning(h, kandidater):
+    """Poängsätt sändningarna: namnet i manuset väger tyngst, sedan ovanliga ord ur hälsningen."""
+    namn = re.split(r'[\s,]+', h['namn'].strip())[0].lower()
+    ord_ = {o for o in re.findall(r'[\wåäöÅÄÖ-]{5,}', h['text'].lower()) if o not in STOPP_H}
+    bast, basta_poang = None, 0
+    for g in kandidater:
+        låg = g['text'].lower()
+        poang = (3 if len(namn) >= 4 and namn not in ('anonym', 'lyssnare') and namn in låg else 0) + sum(1 for o in ord_ if o in låg)
+        if poang > basta_poang:
+            bast, basta_poang = g, poang
+    return bast or (kandidater[0] if kandidater else None)   # ingen träff: den första efter att den kom in
+
+
+hals = sorted(radiod['hälsningar'], key=lambda h: h['ts'])
+laststallen = {}
+for h in hals:
+    if not h.get('läst'):
+        continue
+    g = vilken_sandning(h, [x for x in sandningar if x['ts'] > h['ts']])
+    if g:
+        laststallen.setdefault(g['ts'], []).append(h)
+kvar = []
+sandlista = []
+for g in sandningar:
+    mina = laststallen.get(g['ts'], [])
+    nasta = next((m for m in musikseg if m['ts'] >= g['ts']), None)
+    lat = musikbibl.get((nasta or {}).get('fil') or (nasta or {}).get('titel'))
+    sandlista.append({'ts': g['ts'], 'titel': g['titel'], 'text': g['text'], 'fil': '/ljud/' + g['fil'], 'sek': g['sek'], 'röst': g.get('röst', ''),
+                  'tecken': len(g['text']),
+                  'låt': ({'titel': lat['titel'], 'fil': '/ljud/' + lat['fil'], 'sek': lat.get('sek', 0)} if lat else None),
+                  'hälsningar': [{'namn': h['namn'], 'text': h['text'], 'sort': h['sort'], 'ts': h['ts']} for h in mina]})
+olasta = [{'namn': h['namn'], 'text': h['text'], 'sort': h['sort'], 'ts': h['ts']} for h in hals if not h.get('läst')]
+musiklista = [{'titel': m['titel'], 'fil': '/ljud/' + m['fil'], 'sort': m['sort'], 'sek': m.get('sek', 0)} for m in radiod['musik']]
+
 tidning = json.load(open(f'{DATA}/tidningen.json'))
 rubriker = [{'ts': u['ts'], 'nummer': u['nummer'], 'rubrik': u['huvud']['rubrik'], 'ingress': u['huvud'].get('ingress', ''), 'bild': u['huvud'].get('bild', '')} for u in sorted(tidning, key=lambda u: u['ts'])]
 radio = json.load(open(f'{DATA}/radio.json'))
@@ -172,6 +217,7 @@ ut = {
     'minuter': list(minuter.values()), 'kvarter': kvarter, 'typer': typlista, 'avsändare': avslista, 'puls': pulsrader,
     'nätverk': [{'från': a, 'till': b, 'antal': n} for (a, b), n in nät.most_common(80)],
     'milstolpar': mil, 'verktyg': verktyg, 'rubriker': rubriker,
+    'radio': {'musik_ursprung': 'Musiken är färdiga låtar från ett tidigare radioprojekt, Owl Creek Radio, och skapades inte under workshopen. Det enda ljud som gjordes den här dagen var rösten: sju manus, skrivna av en agent och upplästa av en talsyntes.', 'sändningar': sandlista, 'musik': musiklista, 'olästa_hälsningar': olasta, 'jingel': next(('/ljud/' + m['fil'] for m in radiod['musik'] if m['sort'] == 'jingel'), None), 'tecken_totalt': sum(r['tecken'] for r in sandlista), 'röst': (sandlista[0]['röst'] if sandlista else '')},
     'rekord': {'djupaste_kedja': {'djup': djupast['djup'], 'team': len({k['från'] for k in kedja(djupast)}), 'kedja': kedja(djupast), 'ts': djupast['ts']},
                'livligaste_minut': {'t': mest_min['t'], 'antal': sum(v for k, v in mest_min.items() if k != 't')},
                'vanligaste_typer': collections.Counter(e['typ'] for e in händelser.values()).most_common(12),

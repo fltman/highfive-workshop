@@ -381,22 +381,18 @@
 
       const alla = arr(data && data.kvarter).filter(obj);
       if (!alla.length) { rot.append(api.el('p', { class: 'h-kvarter-tomt', text: 'Det finns inga kvarter i historiken.' })); return; }
-      const deltagare = ordnaEfter(alla, 'live');   // en stad: alla kvarter i samma lista, i den ordning de gick live
-      const ledning = [];
+      const stan = ordnaEfter(alla, 'live');   // en stad: alla kvarter i samma lista, i den ordning de gick live
       const harReplay = !!window.Historia.sektioner.replay;
 
       // Hitta ditt kvarter: en länk per kort
       const hitta = api.el('nav', { class: 'h-kvarter-hitta', 'aria-label': 'Hoppa till ett kvarter' });
-      for (const [rubrik, grupp] of [['Hitta ditt kvarter', deltagare], ['Ledningens kvarter', ledning]]) {
-        const lankar = grupp.map(k => hopplank(api, k)).filter(Boolean);
-        if (!lankar.length) continue;
-        hitta.append(etikett(api, rubrik), api.el('ul', { class: 'h-kvarter-hopplista' }, lankar));
-      }
+      const lankar = stan.map(k => hopplank(api, k)).filter(Boolean);
+      if (lankar.length) hitta.append(etikett(api, 'Hitta ditt kvarter'), api.el('ul', { class: 'h-kvarter-hopplista' }, lankar));
       if (hitta.childNodes.length) rot.append(hitta);
       rot.append(api.el('p', { class: 'h-kvarter-forklaring', text: 'Så läser du talen: en reaktion är en händelse på Stadens puls som pekar ut någon annans händelse som sin orsak. Att andra reagerade på ens kvarter var det som gav poäng under dagen. Bidrag är sammanfogade pull requests, klockslaget är när de gick in, och rader kod är de rader som lades till i dem.' }));
       if (alla.some(k => obj(k.mörker))) {                       // läsningen är lek, och det ska den som hittar sitt kvarter få veta
         const o = alla.find(k => txt(k.team) === 'observatoriet');
-        const vem = 'Observatoriet';
+        const vem = (o && txt(o.namn)) || 'Observatoriet';
         rot.append(api.el('p', { class: 'h-kvarter-forklaring', text: 'Observatoriets läsning är det senaste som ' + vem + ' såg i kvarterets inre mörker. Mörkertalet går från 0 till 100. Läsningen hör till spelet i staden och är inget omdöme om er som byggde.' }));
       }
 
@@ -412,31 +408,33 @@
         spalta(api, rutnat, kort);
       };
 
-      // Deltagarnas kvarter, i den ordning de gick live
-      const medLive = deltagare.filter(k => tid(k.live) !== null);
-      let text = api.tal(deltagare.length) + ' kvarter, i den ordning de gick live.';
+      // Hela staden i en lista, i den ordning kvarteren gick live.
+      const medLive = stan.filter(k => tid(k.live) !== null);
+      const heltNamn = k => { const t = txt(k.team), n = txt(k.namn) || t; return n + (t && t.toLowerCase() !== n.toLowerCase() ? ' (team ' + t + ')' : ''); };
+      let text = api.tal(stan.length) + ' kvarter, i den ordning de gick live.';
       if (medLive.length) {
-        const forst = medLive[0], t = txt(forst.team), n = txt(forst.namn) || t;
-        if (n) text += ' Först ut var ' + n + (t && t !== n ? ' (team ' + t + ')' : '') + ' klockan ' + api.kl(forst.live) + '.';
+        const forst = medLive[0];
+        text += ' Först ut var ' + heltNamn(forst) + ' klockan ' + api.kl(forst.live) + (forst.ledning === true ? ', byggt av workshopledningen' : '') + '.';
+        // Krönikan och milstolparna räknar från det första kvarter ett deltagarteam byggde. Står bara det ena här
+        // säger sidan emot sig själv, så båda skrivs ut när de inte är samma kvarter.
+        const forstaTeam = medLive.find(k => k.ledning !== true);
+        if (forstaTeam && forstaTeam !== forst) text += ' Det första som ett deltagarteam byggde var ' + heltNamn(forstaTeam) + ' klockan ' + api.kl(forstaTeam.live) + '.';
       }
+      // Hur "live" räknas. Båda halvorna kontrolleras mot datat innan de påstås.
       const medBidrag = medLive.filter(k => arr(k.pr).filter(obj).length);
-      if (medBidrag.length && medBidrag.every(k => k.live === Math.min(...arr(k.pr).filter(obj).map(p => tid(p.ts)).filter(t => t !== null)))) text += ' Ett kvarter räknas som live från att dess första bidrag sammanfogades' + (medBidrag.length < medLive.length ? ', och de kvarter som byggdes utan pull request från sin första händelse på Stadens puls.' : '.');
-      const bidrag = deltagare.reduce((s, k) => s + arr(k.pr).filter(obj).length, 0);
-      const rader = deltagare.reduce((s, k) => s + (arr(k.pr).filter(obj).length ? num(k.rader) || 0 : 0), 0);
+      const utanBidrag = medLive.filter(k => !arr(k.pr).filter(obj).length);
+      const forsta = forstaHandelser(data);
+      const prStämmer = medBidrag.length > 0 && medBidrag.every(k => k.live === Math.min(...arr(k.pr).filter(obj).map(p => tid(p.ts)).filter(t => t !== null)));
+      const pulsStämmer = utanBidrag.length > 0 && utanBidrag.every(k => forsta.has(txt(k.team)) && Math.abs(k.live - forsta.get(txt(k.team))) < 2000);
+      if (prStämmer) text += ' Ett kvarter räknas som live när dess första bidrag sammanfogades' + (pulsStämmer ? ', och de som byggdes utan pull request från sin första händelse på Stadens puls.' : '.');
+      else if (pulsStämmer) text += ' De kvarter som byggdes utan pull request räknas som live från sin första händelse på Stadens puls.';
+      const bidrag = stan.reduce((s, k) => s + arr(k.pr).filter(obj).length, 0);
+      const rader = stan.reduce((s, k) => s + (arr(k.pr).filter(obj).length ? num(k.rader) || 0 : 0), 0);
       if (bidrag > 0 && rader > 0) text += ' Tillsammans blev det ' + api.tal(bidrag) + ' ' + boj(bidrag, 'sammanfogat bidrag', 'sammanfogade bidrag') + ' och ' + api.tal(rader) + ' ' + boj(rader, 'rad', 'rader') + ' kod.';
-      grupp('Kvarteren', text, deltagare, k => {
+      grupp('Kvarteren', text, stan, k => {
         const live = tid(k.live);
         return { harReplay, sedda, total: medLive.length, rang: live === null ? 0 : medLive.indexOf(k) + 1 };   // platsen i den ordnade listan, så två kvarter med samma millisekund ändå får nr 3 och nr 4
       });
-
-      // Ledningens kvarter hålls inte längre för sig: listan ovan är hela staden. Blocket ligger kvar för data där ledning finns.
-      if (ledning.length) {
-      let ledtext = api.tal(ledning.length) + ' kvarter som workshopledningen byggde, inte ett deltagarteam.';
-      if (ledning.every(k => !arr(k.pr).length)) ledtext += ' De kom inte in som pull requests från ett team, så här finns inga bidrag eller rader kod att räkna.';
-      const forsta = forstaHandelser(data), ledLive = ledning.filter(k => tid(k.live) !== null);
-      if (ledLive.length && ledLive.every(k => forsta.has(txt(k.team)) && Math.abs(k.live - forsta.get(txt(k.team))) < 2000)) ledtext += ' De räknas som live från sin första händelse på Stadens puls.';
-      grupp('Ledningens kvarter', ledtext, ledning, () => ({ harReplay, sedda, total: 0, rang: 0 }));
-      }
 
       // Markera kortet som adressen pekar på (:target räcker inte, korten finns inte när sidan laddas)
       const markera = () => {

@@ -520,9 +520,12 @@
 
       // ---------- 5. nyckeltal som inte står högst upp på sidan ----------
       function ritaTal() {
-        const rader = [[tal.tidningsnummer, 'nummer av Stadsbladet'], [tal.radiosändningar, 'sändningar i Radio Torget'], [tal.hälsningar, 'hälsningar till radion'],
-          [tal.observationer, 'observationer från Observatoriet'], [tal.bilder, 'bilder från Ateljén'], [tal.repliker_på_gatan, 'repliker på gatan, sagda av invånarna'],
-          [tal.kanaler, 'kanaler på Torget'], [tal.avsändare, 'avsändare på Torget, invånarna på gatan oräknade']].filter(r => ärTal(r[0]));
+        // Finns radiosektionen räknar den sina egna sändningar och hälsningar, och gör det utförligare: då står de inte här också.
+        const harRadio = !!window.Historia.sektioner.radio;
+        const rader = [[tal.tidningsnummer, 'nummer av Stadsbladet']]
+          .concat(harRadio ? [] : [[tal.radiosändningar, 'sändningar i Radio Torget'], [tal.hälsningar, 'hälsningar till radion']],
+            [[tal.observationer, 'observationer från Observatoriet'], [tal.bilder, 'bilder från Ateljén'], [tal.repliker_på_gatan, 'repliker på gatan, sagda av invånarna'],
+              [tal.kanaler, 'kanaler på Torget'], [tal.avsändare, 'avsändare på Torget, invånarna på gatan oräknade']]).filter(r => ärTal(r[0]));
         if (!rader.length) return null;
         const { f } = figur('Dagen i övrigt', stor(ord(rader.length)) + ' tal som inte fick plats högst upp', 'Sådant som också hände under dagen.');
         const rutnät = api.el('div', { class: 'h-rekord-tal' });
