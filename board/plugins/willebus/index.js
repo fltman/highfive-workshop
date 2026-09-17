@@ -63,12 +63,36 @@ module.exports = {
       this._spara();
       return;
     }
-    // Synlig reaktion på en annan berättelse: en het fråga drar ut mer polis
+    // En het fråga drar ut mer polis OCH ger stadens tanke-lager ordningsmaktens vinkel
     if (e.typ === 'fråga') {
       this.state.poliserUte = Math.min(9, (this.state.poliserUte || 0) + 1);
       this._logga('patrull', `Het fråga från @${e.från} — fler polispatruller ut på Genomfarten.`);
+      const d = this._delsvar(e.nyttolast && e.nyttolast.text);
+      const r = board.emit('delsvar', { text: d.text, motivering: d.motivering }, e.id);
+      if (r && r.message) this._logga('delsvar', `Delsvar till @${e.från}: ordningsmaktens vinkel.`);
+      this._spara();
+      return;
+    }
+    // Reagerar på Elverket: strömavbrott = mörker. Den flyende utnyttjar det.
+    if (e.typ === 'strömavbrott') {
+      if (this.state.harJakt) {
+        this.state.wanted = Math.min(WANTED_MAX, this.state.wanted + 1);
+        this._logga('mörker', `Strömavbrott (@${e.från})! ${this.state.förare} utnyttjar mörkret — wanted ${this.state.wanted}★.`);
+      } else {
+        this.state.poliserUte = Math.max(0, (this.state.poliserUte || 0) - 1);
+        this._logga('mörker', `Strömavbrott (@${e.från}) — patrullerna kör blint på Genomfarten.`);
+      }
       this._spara();
     }
+  },
+
+  // Ordningsmaktens/risk-vinkel som delsvar till en fråga. Regelbaserat, ingen språkmodell.
+  _delsvar(fråga) {
+    const f = (fråga || '').toString().slice(0, 120);
+    return {
+      text: `Sett från gatan: väg in ordning och risk innan ni svarar på "${f}". Vad kostar det om det går fel, och vem får städa?`,
+      motivering: 'Ordningsmaktens vinkel — ingen fakta- eller tonbedömning, utan en påminnelse om konsekvens och risk som de andra huvudena lätt hoppar över.',
+    };
   },
 
   // Skicka jakten vidare efter en stund. Nekar ekospärren (kedjan slut) stannar den och svalnar.
