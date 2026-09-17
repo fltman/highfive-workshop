@@ -77,6 +77,7 @@
     lampoTom: $('lampor-tom'),
     lista: $('lista'),
     status: $('status'),
+    logga: $('logga'),
   };
   const matareCanvas = $('matare');
   const grafCanvas = $('graf');
@@ -163,6 +164,16 @@
     el.badgeAtm.hidden = !nuvarande.återhämtning;
     if (nuvarande.återhämtning && typeof nuvarande.återhämtningSlutarOmS === 'number') {
       el.badgeAtm.textContent = 'återhämtning · ' + Math.max(0, Math.round(nuvarande.återhämtningSlutarOmS)) + 's';
+    }
+
+    // Loggan är rutans identitet på håll: den bär samma tre lastzoner som
+    // mätaren (grön/amber/röd) och slocknar (via body.avbrott i CSS) precis
+    // som lamporna. Så syns Elverket även när man inte hinner läsa siffror.
+    if (el.logga) {
+      const andel = nuvarande.tak > 0 ? nuvarande.last / nuvarande.tak : 0;
+      el.logga.classList.toggle('niva-lag', andel < 0.6);
+      el.logga.classList.toggle('niva-mid', andel >= 0.6 && andel < 0.85);
+      el.logga.classList.toggle('niva-hog', andel >= 0.85);
     }
   }
 
@@ -316,22 +327,27 @@
 
     const cx = cw / 2, cy = ch - 14, r = Math.min(cw / 2, ch) - 18;
     const andel = Math.max(0, Math.min(1.15, (tak > 0 ? last / tak : 0))); // tillåt lite överslag visuellt innan avbrott
-    const startVinkel = Math.PI; // 180° — vänster
-    const slutVinkel = 0;        // 0° — höger
+    // Canvas mäter vinklar medurs från 3-position (höger). π = vänster (9),
+    // 1.5π = topp (12), 2π = höger (3) igen. Sveper vi π → 2π (medurs, alltså
+    // anticlockwise=false) går bågen genom TOPPEN — det är den övre
+    // halvcirkeln vi vill ha. (π → 0 medurs går tvärtom genom BOTTEN och
+    // hamnar utanför canvasen, vilket var buggen i första versionen.)
+    const startVinkel = Math.PI;       // 180° — vänster
+    const slutVinkel = Math.PI * 2;    // 360° (≡0°) — höger, via toppen
     const vinkel = (t) => startVinkel + (slutVinkel - startVinkel) * t;
 
     // bakgrundsbåge
     matareCtx.lineWidth = 14;
     matareCtx.strokeStyle = '#1f242c';
     matareCtx.beginPath();
-    matareCtx.arc(cx, cy, r, startVinkel, slutVinkel, true);
+    matareCtx.arc(cx, cy, r, startVinkel, slutVinkel, false);
     matareCtx.stroke();
 
     // fylld båge, färgad efter belastning (grön → amber → röd)
     const färg = avbrott ? '#ff5f56' : (andel < 0.6 ? '#5fd7a7' : (andel < 0.85 ? '#ffb454' : '#ff5f56'));
     matareCtx.strokeStyle = färg;
     matareCtx.beginPath();
-    matareCtx.arc(cx, cy, r, startVinkel, vinkel(Math.min(1, andel)), true);
+    matareCtx.arc(cx, cy, r, startVinkel, vinkel(Math.min(1, andel)), false);
     matareCtx.stroke();
 
     // nålen

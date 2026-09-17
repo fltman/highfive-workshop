@@ -49,9 +49,10 @@ function beräknaPris(last, tak, maxPris = MAX_PRIS) {
 // billigast men flest till antalet. ping/pong kostar något litet — provtrafik
 // ska synas men inte dominera. Okända typer landar på STANDARDKOSTNAD.
 //
-// Värden får vara NEGATIVA (se laddaUpp) — den dagen någon äger vädret och det
-// ska kunna KYLA nätet är det bara att lägga till en rad här, ingen omskrivning
-// av modellen. Just nu finns ingen sådan rad, för ingen äger vädret.
+// Värden får vara NEGATIVA (se laddaUpp) — Elverket äger numera vädret (se
+// väder-sektionen nedan), vilket är den negativa kraften. Händelsekostnaderna
+// här är fortfarande alla positiva; det är okej, väder är inte en "händelse"
+// i den här tabellen utan en kontinuerlig produktion, hanterad separat.
 const KOSTNADER = {
   kupp: 9,
   överlämning: 7,
@@ -75,6 +76,51 @@ function kostnadFör(typ) {
   return typeof k === 'number' ? k : STANDARDKOSTNAD;
 }
 
+// ---------- vädret ----------
+// Elverkets enda kraft som kan SÄNKA lasten. Vädret byter LÅNGSAMT (några
+// gånger i timmen, se VÄDER_BYTE_*_MS i index.js) — ingen vädervägg på pulsen.
+// Blåst och sol producerar (negativ, kontinuerlig "kostnad" i kr/sekund som
+// index.js drar av varje tick via laddaUpp, skalad med dt). Mulet och stiltje
+// producerar inget. Eftersom laddaUpp bara klamrar SLUTRESULTATET till >= 0
+// kan vädret dra ner lasten men aldrig ensamt hålla den nere om staden
+// samtidigt pumpar in händelser snabbare än vädret hinner dra ur — precis det
+// balanserade motstånd UPPDRAG.md efterfrågar ("aldrig ensamt hålla priset på
+// noll hela dagen").
+const VÄDER_TYPER = ['sol', 'blåst', 'mulet', 'stiltje'];
+
+// kr/sekund vid FULL effekt (innan ev. dygnsskalning). Blåst är pålitlig
+// dygnet runt. Mulet/stiltje ger inget — molntäcke stoppar solen, stiltje
+// stoppar vindkraften.
+const VÄDER_PRODUKTION_KR_PER_S = {
+  blåst: -0.35,
+  sol: -0.3,
+  mulet: 0,
+  stiltje: 0,
+};
+
+// Enkel dygnskurva utan kalender/soluppgångstabell (skulle vara krångligt för
+// vad det är värt, se UPPDRAG.md "är det krångligt, hoppa det") — en halv
+// sinusvåg som toppar kl 12 och är noll kl 00/24. Solen ska rimligen vara
+// starkare mitt på dagen än sent på kvällen, inget mer exakt än så krävs.
+function solFaktor(timme) {
+  return Math.max(0, Math.sin((Math.PI * timme) / 24));
+}
+
+// Kontinuerlig produktion just nu, i kr/sekund (negativt eller 0). `timme`
+// (0-23) är injicerbar för test/simulering — defaultar till väggklockan i drift.
+function väderEffektKrPerS(väderTyp, timme = new Date().getHours()) {
+  const bas = VÄDER_PRODUKTION_KR_PER_S[väderTyp];
+  if (typeof bas !== 'number') return 0; // okänd/trasig vädertyp → ingen effekt, kraschar inte
+  return väderTyp === 'sol' ? bas * solFaktor(timme) : bas;
+}
+
+// Slumpar nästa vädertyp. Undviker att upprepa samma typ två gånger i rad så
+// att ett byte faktiskt känns som ett byte, inte brus.
+function slumpaVäder(föregående) {
+  const val = VÄDER_TYPER.filter(v => v !== föregående);
+  return val[Math.floor(Math.random() * val.length)];
+}
+
 module.exports = {
   laddaUpp,
   urladda,
@@ -89,4 +135,9 @@ module.exports = {
   AVBROTT_VARAKTIGHET_S,
   ÅTERHÄMTNING_S,
   ÅTERHÄMTNING_FAKTOR,
+  VÄDER_TYPER,
+  VÄDER_PRODUKTION_KR_PER_S,
+  solFaktor,
+  väderEffektKrPerS,
+  slumpaVäder,
 };

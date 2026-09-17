@@ -32,7 +32,10 @@
   .anhangare-lbl { color:var(--dim); font-size:11px; }
   .d.kallelse { border-color:#1c4552; }
   .d.kallelse .rop { color:var(--djup); font-size:12px; }
+  .kraft { display:inline-block; width:50px; height:6px; background:var(--line); border-radius:3px; overflow:hidden; vertical-align:middle; }
+  .kraft i { display:block; height:100%; background:var(--djup); }
   .d.offer { border-color:#2a3a1c; }
+  .tagg { background:var(--djup-dim); color:var(--djup); border-radius:4px; padding:1px 6px; font-size:10px; text-transform:uppercase; letter-spacing:.03em; }
   #offra { display:flex; gap:6px; padding:0 10px 10px; }
   #offra input { flex:1; background:var(--panel); border:1px solid var(--line); border-radius:6px; color:var(--fg); font:inherit; padding:6px 8px; }
   #offra button { background:var(--djup-dim); border:1px solid var(--djup); color:var(--djup); border-radius:6px; padding:6px 10px; font:inherit; cursor:pointer; }
@@ -103,13 +106,14 @@ const dSedda = new Set();
 function kallelseRad(k) {
   const el = document.createElement('div');
   el.className = 'd kallelse';
-  el.innerHTML = `<div class="rad"><span class="fran">tecken: ${esc(k.tecken)} @${esc(k.från)}</span></div><div class="rop">${esc(k.rop)}</div>`;
+  const pct = Math.round((k.kraft ?? 0.5) * 100);
+  el.innerHTML = `<div class="rad"><span class="fran">tecken: ${esc(k.tecken)} @${esc(k.från)}</span><span class="kraft" title="kraft ${pct}%"><i style="width:${pct}%"></i></span></div><div class="rop">${esc(k.rop)}</div>`;
   return el;
 }
 function offerRad(o) {
   const el = document.createElement('div');
   el.className = 'd offer';
-  el.innerHTML = `<div class="rad"><span class="beslut">offer mottaget</span><span class="fran">från ${esc(o.av)}</span></div><div class="rop">${esc(o.vad)}</div>`;
+  el.innerHTML = `<div class="rad"><span class="beslut">offer mottaget</span><span class="tagg">${esc(o.kategori || 'okänt')}</span><span class="fran">från ${esc(o.av)}</span></div><div class="rop">${esc(o.vad)}</div>`;
   return el;
 }
 

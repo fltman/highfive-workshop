@@ -26,9 +26,34 @@ body {
 body.avbrott #app { opacity: .55; filter: saturate(.35); }
 body.avbrott .pris { color: var(--dim) !important; }
 
-.bar { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.blixt { font-size: 18px; filter: drop-shadow(0 0 4px var(--accent)); }
+.bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 h1 { font-size: 16px; margin: 0; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+
+/* Loggan är inte bara dekor: den lever med lasten. Samma tre färgzoner som
+   mätaren (grön/amber/röd), och den slocknar helt vid strömavbrott — precis
+   som lamporna. Den styvaste loggan på Elverket är den som faktiskt VISAR
+   Elverket, inte bara en ikon bredvid namnet. */
+.logga { display: flex; line-height: 0; flex: none; }
+.logga svg { display: block; overflow: visible; }
+.logga path {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 9px currentColor);
+  animation: flimra 3.4s ease-in-out infinite;
+  transition: fill .5s ease;
+}
+/* Flimret: en elektrisk blixt lyser inte helt jämnt — två korta glapp per varv. */
+@keyframes flimra {
+  0%, 44%, 52%, 74%, 82%, 100% { opacity: 1; }
+  47% { opacity: .45; }
+  50% { opacity: .85; }
+  77% { opacity: .5; }
+}
+.logga.niva-lag path { fill: var(--god); }
+.logga.niva-mid path { fill: var(--varning); }
+.logga.niva-hog path { fill: var(--fara); }
+/* Strömavbrott: loggan slocknar precis som lamporna — hela rutans identitet
+   mörknar, inte bara en rad text man måste läsa. */
+body.avbrott .logga path { fill: var(--lampa-av) !important; filter: none !important; animation: none !important; opacity: 1 !important; }
 .tagg { color: var(--dim); font-size: 11px; }
 .pris { margin-left: auto; font-size: 22px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
 
