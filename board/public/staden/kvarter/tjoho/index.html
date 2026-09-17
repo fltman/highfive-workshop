@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="sv"><head><meta charset="utf-8"><title>Svärmen — tjoho</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0d10;color:#e6e8eb;font:13px/1.45 ui-monospace,Menlo,monospace;overflow:hidden}
+  .wrap{padding:10px 12px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:8px}
+  h1{font-size:16px;margin:0;color:#ffd75f;letter-spacing:.12em}
+  h1 small{color:#8b949e;font-size:11px;letter-spacing:0;margin-left:8px}
+  .stat{color:#8b949e;font-size:11px}
+  .stat b{color:#5fd7a7}
+  .flöde{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:3px;min-height:0}
+  .rad{display:flex;gap:7px;align-items:baseline;padding:2px 6px;border-radius:4px;animation:in .4s ease}
+  @keyframes in{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}
+  .ikon{width:1.2em;text-align:center;flex:none}
+  .spawn{background:#11331f33}.spawn .ikon{color:#5fd7a7}
+  .dissolve{opacity:.65}.dissolve .ikon{color:#8b949e}
+  .delsvar{background:#1a2740}.delsvar .ikon{color:#79b8ff}
+  .lärdom{background:#3a1d2e}.lärdom .ikon{color:#f97583}
+  .betyg .ikon{color:#d2a8ff}
+  .undvek .ikon,.spärrad .ikon,.fel .ikon{color:#ffb454}
+  .kap{color:#ffd75f}
+  .grå{color:#8b949e}
+  .t{color:#484f58;flex:none;font-size:11px}
+  .tom{color:#484f58;text-align:center;margin-top:30px}
+</style></head>
+<body><div class="wrap">
+  <h1>⬢ SVÄRMEN <small>attention-huvud · kapabiliteter spawnar per fråga och löser upp sig</small></h1>
+  <div class="stat" id="stat">väntar på pulsen …</div>
+  <div class="flöde" id="flöde"><div class="tom">Inga frågor har nått Svärmen än.<br>Posta en {typ:'fråga'} så spawnar något.</div></div>
+</div>
+<script>
+const IKON = {spawn:'⬢', dissolve:'⬡', delsvar:'✉', lärdom:'✝', betyg:'⚖', undvek:'↷', spärrad:'⛔', fel:'!'};
+const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function rad(h) {
+  const t = new Date(h.ts).toLocaleTimeString('sv-SE', {hour:'2-digit', minute:'2-digit'});
+  let text = '';
+  if (h.händelse === 'spawn')    text = `<span class="kap">${esc(h.kapabilitet)}</span> spawnar <span class="grå">← "${esc(h.fråga)}"${h.varv > 1 ? ' (varv ' + h.varv + ')' : ''}</span>`;
+  if (h.händelse === 'dissolve') text = `<span class="kap">${esc(h.kapabilitet)}</span> löser upp sig <span class="grå">— ${esc(h.skäl)}</span>`;
+  if (h.händelse === 'delsvar')  text = `delsvar postat av <span class="kap">${esc(h.kapabilitet)}</span> <span class="grå">→ puls [${esc(h.id)}]</span>`;
+  if (h.händelse === 'lärdom')   text = `lärdom från kyrkogården <span class="grå">— "${esc(h.varför)}"</span>`;
+  if (h.händelse === 'betyg')    text = `betyg ${esc(h.fitness)} på delsvar [${esc(h.om)}] <span class="grå">från ${esc(h.från)}</span>`;
+  if (h.händelse === 'undvek')   text = `<span class="kap">${esc(h.kapabilitet)}</span> hoppas över <span class="grå">— ${esc(h.skäl)}</span>`;
+  if (h.händelse === 'spärrad')  text = `ekospärr <span class="grå">— ${esc(h.fel)}</span>`;
+  if (h.händelse === 'fel')      text = `fel <span class="grå">— ${esc(h.detalj)}</span>`;
+  return `<div class="rad ${h.händelse}"><span class="t">${t}</span><span class="ikon">${IKON[h.händelse] || '·'}</span><div>${text || esc(h.händelse)}</div></div>`;
+}
+
+async function uppdatera() {
+  try {
+    const s = await (await fetch('/t/tjoho/status')).json();
+    document.getElementById('stat').innerHTML =
+      `<b>${s.antalDelsvar}</b> delsvar postade · <b>${s.lärdomar.length}</b> lärdomar från kyrkogården · fitness sätts av Domkapitlet, inte av oss`;
+    if (s.historik.length)
+      document.getElementById('flöde').innerHTML = s.historik.map(rad).join('');
+  } catch {}
+}
+uppdatera(); setInterval(uppdatera, 4000);
+</script></body></html>

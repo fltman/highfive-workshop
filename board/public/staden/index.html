@@ -22,6 +22,19 @@
   .e.d2 { border-color:#3b4a5a; } .e.d3 { border-color:#5a4a3b; } .e.d4 { border-color:#6a3b3b; }
   @keyframes pop { from { opacity:0; transform:translateX(-12px) scale(.9); background:#2a2216;} to { opacity:1; transform:none; } }
 
+  /* topplistan */
+  #topp { display:flex; gap:10px; align-items:center; padding:8px 16px; border-bottom:1px solid var(--line); font-size:13px; color:var(--dim); overflow:hidden; white-space:nowrap; }
+  #topp .t { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:3px 10px; color:var(--fg); transition:transform .3s, border-color .3s; }
+  #topp .t b { color:var(--accent); margin-left:6px; } #topp .t.etta { border-color:var(--accent); }
+  #topp .t.upp { transform:scale(1.12); border-color:var(--me); }
+  #topp .rek { margin-left:auto; } #topp .rek b { color:var(--me); } #topp .rek i { font-style:normal; color:var(--fg); }
+  /* kedjorna: linjer mellan rutor när ett kvarter reagerar på ett annat */
+  #trådar { position:absolute; left:0; top:0; width:100%; pointer-events:none; z-index:4; overflow:visible; }
+  #trådar path { fill:none; stroke:var(--accent); stroke-width:2.5; stroke-linecap:round; filter:drop-shadow(0 0 6px rgba(255,180,84,.7)); stroke-dasharray:1; stroke-dashoffset:1; animation: dra 1.1s ease-out forwards, tona 4s ease-in 4s forwards; }
+  #trådar circle { fill:var(--accent); animation: tona 4s ease-in 4s forwards; }
+  #trådar text { fill:var(--fg); font:12px ui-monospace, Menlo, monospace; paint-order:stroke; stroke:var(--bg); stroke-width:4px; animation: tona 4s ease-in 4s forwards; }
+  @keyframes dra { to { stroke-dashoffset:0; } } @keyframes tona { to { opacity:0; } }
+
   /* kvarteren: två kolumner på en vanlig skärm, rutan växer med sitt innehåll upp till ett tak */
   main { display:grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); gap:16px; padding:16px; align-items:start; }
   .k { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; animation: in .4s ease-out; }
@@ -47,6 +60,8 @@
 <body>
 <header><h1>Staden</h1><a href="/">Torget</a><a href="/workshop">workshop</a><span class="n" id="n"></span></header>
 <div id="puls"></div>
+<div id="topp"></div>
+<svg id="trådar"></svg>
 <main id="m"></main>
 <script>
 const seen = new Map();           // filnamn -> kort
@@ -91,6 +106,48 @@ async function load() {
 }
 load(); setInterval(load, 20000);
 
+// Efter en deploy har kvarteren ny kod: ladda om sidan så storskärmen aldrig visar gamla versioner. (Idé: team highfive.)
+let startad;
+setInterval(async () => {
+  const h = await fetch('/api/health').then(r => r.json()).catch(() => null);
+  if (!h || !h.startad) return;
+  if (startad && h.startad !== startad && !document.querySelector('.k.stor')) location.reload();
+  startad = startad || h.startad;
+}, 15000);
+
+// topplistan: poäng får man när ett ANNAT kvarter reagerar på ens händelse
+const toppEl = document.getElementById('topp'); let förra = {};
+async function topp() {
+  const p = await fetch('/api/poang').then(r => r.json()).catch(() => null); if (!p) return;
+  const rek = p.längsta && p.längsta.djup > 1 ? `<span class="rek">längsta kedjan <b>${p.längsta.djup}</b> led genom <b>${p.längsta.team}</b> team: <i>${p.längsta.kedja.map(k => esc(k.typ)).join(' → ')}</i></span>` : '<span class="rek">ingen kedja ännu: reagera på någon annans händelse</span>';
+  toppEl.innerHTML = '<span>poäng</span>' + p.topp.filter(t => t.poäng > 0 || t.händelser > 0).slice(0, 8).map((t, i) => `<span class="t${i === 0 && t.poäng ? ' etta' : ''}${(förra[t.team] ?? t.poäng) < t.poäng ? ' upp' : ''}" title="poäng = andra kvarter som reagerat på er">${esc(t.team)}<b>${t.poäng}</b></span>`).join('') + rek;
+  förra = Object.fromEntries(p.topp.map(t => [t.team, t.poäng]));
+  setTimeout(() => toppEl.querySelectorAll('.upp').forEach(x => x.classList.remove('upp')), 1200);
+}
+topp(); setInterval(topp, 10000);
+
+// kedjor: när en händelse har en orsak ritas en tråd från orsakens kvarter till det som reagerade
+const trådar = document.getElementById('trådar'); const avsändare = new Map();
+function mitt(team) {
+  const k = document.querySelector(`.k[data-team="${CSS.escape(team)}"]`);
+  if (k && !k.classList.contains('stor')) { const r = k.getBoundingClientRect(); return { x: r.left + r.width / 2 + scrollX, y: r.top + 22 + scrollY }; }
+  const r = pulsEl.getBoundingClientRect(); return { x: r.left + 120 + scrollX, y: r.top + r.height / 2 + scrollY };   // inget eget kvarter: tråden utgår från pulsen
+}
+function tråd(från, till, typ) {
+  if (document.querySelector('.k.stor')) return;
+  trådar.style.height = document.documentElement.scrollHeight + 'px';
+  const a = mitt(från), b = mitt(till); if (Math.hypot(a.x - b.x, a.y - b.y) < 8) return;
+  const dx = Math.abs(a.x - b.x), dy = Math.abs(a.y - b.y);
+  // samma kolumn: bågen går ut åt sidan i stället för rakt över innehållet
+  const mx = dx < 80 ? (a.x + b.x) / 2 + Math.min(260, 90 + dy * .35) * (a.x > innerWidth / 2 ? -1 : 1) : (a.x + b.x) / 2;
+  const my = dx < 80 ? (a.y + b.y) / 2 : Math.min(a.y, b.y) - 60 - dx * .08;
+  const ns = 'http://www.w3.org/2000/svg', g = document.createElementNS(ns, 'g');
+  const path = document.createElementNS(ns, 'path'); path.setAttribute('d', `M${a.x},${a.y} Q${mx},${my} ${b.x},${b.y}`); path.setAttribute('pathLength', '1');
+  const c = document.createElementNS(ns, 'circle'); c.setAttribute('cx', b.x); c.setAttribute('cy', b.y); c.setAttribute('r', 5);
+  const t = document.createElementNS(ns, 'text'); t.setAttribute('x', (a.x + b.x) / 4 + mx / 2); t.setAttribute('y', (a.y + b.y) / 4 + my / 2 - 6); t.setAttribute('text-anchor', 'middle'); t.textContent = typ;
+  g.append(path, c, t); trådar.appendChild(g); setTimeout(() => g.remove(), 8200);
+}
+
 // pulsremsan
 const pulsEl = document.getElementById('puls');
 function sammanfatta(n) { if (n == null) return ''; if (typeof n === 'string') return n; for (const k of ['text', 'omdöme', 'plats', 'förare', 'vad', 'till']) if (typeof n[k] === 'string') return n[k]; return ''; }
@@ -100,11 +157,13 @@ function visa(e) {
   d.innerHTML = `<b>${esc(e.typ)}</b> <i>${esc(e.från)}</i>${e.orsak ? ` <u>↩${e.orsak}</u>` : ''}${s ? ` <s>${esc(s.slice(0, 60))}</s>` : ''}`;
   d.title = JSON.stringify(e.nyttolast ?? '');
   pulsEl.prepend(d); while (pulsEl.children.length > 30) pulsEl.lastChild.remove();
+  avsändare.set(e.id, e.från);
+  if (e.live && e.orsak && avsändare.has(e.orsak) && avsändare.get(e.orsak) !== e.från) { tråd(avsändare.get(e.orsak), e.från, e.typ); setTimeout(topp, 400); }
   const k = document.querySelector(`.k[data-team="${CSS.escape(e.från)}"]`);
   if (k) { k.classList.remove('blink'); void k.offsetWidth; k.classList.add('blink'); setTimeout(() => k.classList.remove('blink'), 1500); }
 }
 fetch('/api/puls?limit=30').then(r => r.json()).then(l => l.forEach(visa)).catch(() => {});
-new EventSource('/api/stream?channel=staden-puls').onmessage = m => { try { const msg = JSON.parse(m.data); const e = JSON.parse(msg.text); visa({ id: msg.id, ...e }); } catch {} };
+new EventSource('/api/stream?channel=staden-puls').onmessage = m => { try { const msg = JSON.parse(m.data); const e = JSON.parse(msg.text); visa({ id: msg.id, live: true, ...e }); } catch {} };
 </script>
 </body>
 </html>
