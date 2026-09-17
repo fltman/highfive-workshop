@@ -145,7 +145,7 @@ function onEvent(e) {
     case 'strömavbrott': {
       const höjning = e.typ === 'strömavbrott' ? 2 : 1;
       bank.styrränta = Math.min(49, bank.styrränta + höjning);
-      const elpris = Number(n.kr ?? n.pris);
+      const elpris = Number(n.mybanks ?? n.kr ?? n.pris);
       köa(3, 'räntehöjning', { styrränta: bank.styrränta, valuta: VALUTA, text: `${e.typ === 'strömavbrott' ? 'Strömavbrott' : `Elpriset steg${Number.isFinite(elpris) ? ` till ${kr(elpris)}` : ''}`}. Styrräntan höjs till ${bank.styrränta} %. Det gäller även befintliga lån, läs det finstilta.` }, e);
       for (const kk of Object.values(bank.konton)) for (const l of kk.lån) l.ränta = Math.max(l.ränta, bank.styrränta);
       break;
