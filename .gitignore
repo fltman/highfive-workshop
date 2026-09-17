@@ -9,3 +9,4 @@ projects/*/.claude/settings.local.json
 .atelje-state.json
 .tidning-state
 .radio-state
+.radio-tecken

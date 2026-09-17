@@ -20,7 +20,8 @@ const WANTED_MAX = 5;
 const SVALNAR_MS = 60 * 1000;   // wanted −1 per minut utan händelse
 const OVERLAMNING_MS = 10000;   // hur länge jakten stannar hos oss (och går att gripa) innan den skickas vidare
 const förare = ['Röda Sköden', 'Bagarn', 'Loff', 'Tvillingen', 'Doris 78', 'Kajan'];
-const platser = ['Genomfarten', 'Godisfabriken', 'Elverket', 'Banken', 'Hamnen', 'Klub Lyktan'];
+const platser = ['Genomfarten', 'Godisfabriken', 'Elverket', 'Banken', 'Hamnen', 'Klub Lyktan', 'Kasinot'];
+const HJUL = ['🍒', '🚗', '💰', '💎', '🚔', '🍀'];
 
 module.exports = {
   init(ctx) {
@@ -50,7 +51,116 @@ module.exports = {
       this._grip(board);
       return this._json(res, 200, this.state);
     }
+    // Vägval: publiken röstar vart jakten ska styras vid nästa överlämning.
+    if (req.method === 'POST' && p === '/riktning') {
+      const b = await this._body(req);
+      if (this.state.harJakt && typeof b.mål === 'string' && b.mål.trim()) {
+        const m = b.mål.trim().slice(0, 40);
+        this.state.riktningRöster = this.state.riktningRöster || {};
+        this.state.riktningRöster[m] = (this.state.riktningRöster[m] || 0) + 1;
+        this._spara();
+      }
+      return this._json(res, 200, this.state);
+    }
+    // Casino: satsa på jaktens utgång medan vadslagningen är öppen.
+    if (req.method === 'POST' && p === '/satsa') {
+      const b = await this._body(req);
+      const val = b.på === 'fly' ? 'fly' : (b.på === 'gripen' ? 'gripen' : null);
+      if (val && this.state.casino && this.state.casino.öppen) {
+        this.state.casino[val] = (this.state.casino[val] || 0) + 1;
+        this._spara();
+      }
+      return this._json(res, 200, this.state);
+    }
+    // Kasinot: spela den enarmade banditen. Delad jackpot, tre 🚔 startar en razzia.
+    if (req.method === 'POST' && p === '/snurra') {
+      this._snurra(board);
+      return this._json(res, 200, this.state);
+    }
+    // Roulette: satsa på en färg och snurra hjulet direkt.
+    if (req.method === 'POST' && p === '/rulett') {
+      const b = await this._body(req);
+      const färg = ['röd', 'svart', 'grön'].includes(b.färg) ? b.färg : 'röd';
+      this._rulett(board, färg);
+      return this._json(res, 200, this.state);
+    }
     return false; // → 404
+  },
+
+  // Roulette: 0 är grön, udda röd, jämn svart. Grön ger 14x, röd/svart 2x. Insats 10 marker.
+  _rulett(board, färg) {
+    const r = this.state.rulett;
+    const n = Math.floor(Math.random() * 37);                 // 0–36
+    const utfall = n === 0 ? 'grön' : (n % 2 ? 'röd' : 'svart');
+    r.senasteNummer = n; r.senasteFärg = utfall; r.snurr = (r.snurr || 0) + 1;
+    if (färg === utfall) {
+      const vinst = utfall === 'grön' ? 140 : 20;
+      r.senasteVinst = vinst;
+      r.meddelande = `${n} ${utfall.toUpperCase()} — du satsade ${färg} och vann ${vinst} marker!`;
+      this._registreraVinst(board, vinst, 'roulette');
+    } else {
+      r.senasteVinst = 0;
+      r.meddelande = `${n} ${utfall.toUpperCase()} — du satsade ${färg}. Ingen vinst.`;
+    }
+    this._spara();
+  },
+
+  // Registrerar en vinst: topplista + (vid stor vinst) en casino-vinst-händelse till staden/nyheterna.
+  _registreraVinst(board, belopp, spel) {
+    this.state.topp = this.state.topp || [];
+    this.state.topp.push({ belopp, spel, tid: new Date().toISOString() });
+    this.state.topp.sort((a, b) => b.belopp - a.belopp);
+    this.state.topp = this.state.topp.slice(0, 5);
+    if (belopp >= 50) {
+      board.emit('casino-vinst', { belopp, spel, plats: 'Kasinot' });
+      this._logga('kasino', `Stor vinst på ${spel}: ${belopp} marker! (rubrik till staden)`);
+    }
+  },
+
+  // Enarmad bandit. Varje snurr matar jackpoten; tre lika vinner, tre 🚔 = razzia (startar en jakt).
+  _snurra(board) {
+    const k = this.state.kasino;
+    const hjul = [0, 1, 2].map(() => HJUL[Math.floor(Math.random() * HJUL.length)]);
+    k.snurr = (k.snurr || 0) + 1;
+    k.jackpot = (k.jackpot || 0) + 5;
+    k.senaste = hjul;
+    const [a, bb, c] = hjul;
+    if (a === bb && bb === c) {
+      if (a === '🚔') {                                 // razzia på kasinot: en jakt bryter ut
+        k.senasteVinst = 0;
+        k.meddelande = 'RAZZIA! Tre 🚔 — polisen stormar kasinot.';
+        this._logga('kasino', 'Tre 🚔 på banditen — razzia! En jakt bryter ut från Kasinot.');
+        this._startaKupp(board, 'Kasinot');
+      } else if (a === '💰') {                           // jackpot
+        const pott = k.jackpot;
+        k.senasteVinst = pott;
+        k.utbetalt = (k.utbetalt || 0) + pott;
+        k.meddelande = `💰💰💰 JACKPOT! ${pott} marker!`;
+        this._logga('kasino', `JACKPOT på banditen: ${pott} marker!`);
+        k.jackpot = 100;                                 // pott återställs
+        this._registreraVinst(board, pott, 'jackpot');
+      } else {
+        k.senasteVinst = 50; k.utbetalt = (k.utbetalt || 0) + 50;
+        k.meddelande = `${a}${a}${a} Tre i rad — 50 marker!`;
+        this._registreraVinst(board, 50, 'banditen');
+      }
+    } else if (a === bb || bb === c || a === c) {
+      k.senasteVinst = 10; k.utbetalt = (k.utbetalt || 0) + 10;
+      k.meddelande = 'Par! 10 marker.';
+      this._registreraVinst(board, 10, 'banditen');
+    } else {
+      k.senasteVinst = 0;
+      k.meddelande = 'Ingen vinst. Snurra igen!';
+    }
+    this._spara();
+  },
+
+  // Publikens vinnande vägval (flest röster), eller undefined om ingen röstat.
+  _vinnandeRiktning() {
+    const r = this.state.riktningRöster || {};
+    let bäst, max = 0;
+    for (const k of Object.keys(r)) if (r[k] > max) { max = r[k]; bäst = k; }
+    return bäst;
   },
 
   // Startar en jakt lokalt: sätter tillstånd, nollar grip-mätaren och ger jakten ett id.
@@ -60,8 +170,30 @@ module.exports = {
     this.state.förare = namn;
     this.state.gripTryck = 0;
     this.state.gripMål = 3 + this.state.wanted * 2;   // högre wanted = fler tryck krävs
+    this.state.storlarm = false;
+    this.state.riktningRöster = {};                    // publikens vägval för den här jakten
+    this.state.casino = { öppen: true, fly: 0, gripen: 0, resultat: null };  // vadslå på utgången
     this.state.jaktId = (this.state.jaktId || 0) + 1;
     return this.state.jaktId;
+  },
+
+  // Casinot avgörs när jakten tar slut: grips förövaren vinner "gripen", flyr hen vinner "fly".
+  _avgörCasino(utgång) {
+    const c = this.state.casino;
+    if (!c || !c.öppen) return;
+    c.öppen = false;
+    c.resultat = utgång;
+    const vinnare = c[utgång] || 0, förlorare = (utgång === 'fly' ? c.gripen : c.fly) || 0;
+    this._logga('casino', `Casinot: ${utgång === 'fly' ? 'FLYKT' : 'GRIPEN'} vann! ${vinnare} rätt, ${förlorare} fel.`);
+  },
+
+  // Vid wanted 5 kopplas hela staden in: ett storlarm på pulsen (en gång per jakt).
+  _kollaStorlarm(board) {
+    if (this.state.harJakt && this.state.wanted >= WANTED_MAX && !this.state.storlarm) {
+      this.state.storlarm = true;
+      board.emit('storlarm', { förare: this.state.förare, plats: 'Genomfarten' });
+      this._logga('storlarm', `STORLARM! wanted ${WANTED_MAX}★ — hela staden kopplas in på jakten på ${this.state.förare}.`);
+    }
   },
 
   // Startar en kupp: postar kupp på pulsen och skickar jakten vidare.
@@ -74,6 +206,7 @@ module.exports = {
     if (!(r && r.message)) return false;              // ekospärren nekade (för djup kedja) — ingen storm
     const id = this._börjaJakt(namn, wanted);
     this._logga('kupp', `Kupp på ${plats}! ${namn} flyr, wanted ${this.state.wanted}★`);
+    this._kollaStorlarm(board);
     this._planeraÖverlämning(board, r.message.id, id);
     this._spara();
     return true;
@@ -86,6 +219,7 @@ module.exports = {
     if (this.state.gripTryck >= (this.state.gripMål || 1)) {
       this._logga('gripen', `GRIPEN! Publiken tog ${this.state.förare} på Genomfarten (${this.state.gripTryck} tryck).`);
       board.emit('gripande', { förare: this.state.förare, plats: 'Genomfarten' });
+      this._avgörCasino('gripen');
       this.state.harJakt = false;
       this.state.wanted = 0;
       this.state.jaktId = (this.state.jaktId || 0) + 1;   // ogiltigförklara väntande överlämning
@@ -100,6 +234,7 @@ module.exports = {
       if (this.state.harJakt) return;
       const id = this._börjaJakt(e.nyttolast.förare || 'okänd', Math.min(WANTED_MAX, Number(e.nyttolast.wanted) || 1));
       this._logga('in', `Jakten på ${this.state.förare} kom in från @${e.från} (wanted ${this.state.wanted}★).`);
+      this._kollaStorlarm(board);
       this._planeraÖverlämning(board, e.id, id);
       this._spara();
       return;
@@ -111,8 +246,21 @@ module.exports = {
       const namn = förare[Math.floor(Math.random() * förare.length)];
       const id = this._börjaJakt(namn, Math.min(WANTED_MAX, Number(e.nyttolast && e.nyttolast.wanted) || 1));
       this._logga('larm', `Larm: kupp på ${plats} (@${e.från})! Genomfarten tar upp jakten på ${namn} (wanted ${this.state.wanted}★).`);
+      this._kollaStorlarm(board);
       this._planeraÖverlämning(board, e.id, id);
       this._spara();
+      return;
+    }
+    // Nattliv på Klub Lyktan (@marianne): en shots-runda kan sluta i ett rån i natten.
+    if (e.typ === 'shots-runda' || e.typ === 'beat') {
+      if (this.state.harJakt) return;
+      if (e.typ === 'shots-runda' && Math.random() < 0.4) {
+        this._startaKupp(board, 'Klub Lyktan', e.id);
+      } else {
+        this.state.poliserUte = Math.min(9, (this.state.poliserUte || 0) + 1);
+        this._logga('natt', `Nattpulsen stiger (@${e.från}) — en patrull svänger förbi Klub Lyktan.`);
+        this._spara();
+      }
       return;
     }
     // Staden har svarat / en dom står fast: läget lugnar sig, färre patruller.
@@ -139,6 +287,7 @@ module.exports = {
       if (this.state.harJakt) {
         this.state.wanted = Math.min(WANTED_MAX, this.state.wanted + 1);
         this._logga('mörker', `Strömavbrott (@${e.från})! ${this.state.förare} utnyttjar mörkret — wanted ${this.state.wanted}★.`);
+        this._kollaStorlarm(board);
       } else {
         this.state.poliserUte = Math.max(0, (this.state.poliserUte || 0) - 1);
         this._logga('mörker', `Strömavbrott (@${e.från}) — patrullerna kör blint på Genomfarten.`);
@@ -175,14 +324,17 @@ module.exports = {
         if (this.state.jaktId !== jaktId || !this.state.harJakt) return;   // gripen eller ersatt av ny jakt
         if (this.state.wanted <= 0) {
           this._logga('gripen', `${this.state.förare} greps på Genomfarten. Wanted nollas.`);
+          this._avgörCasino('gripen');
           this.state.harJakt = false;
           this._spara();
           return;
         }
-        const r = board.emit('överlämning', { vad: 'jakt', wanted: this.state.wanted, förare: this.state.förare }, orsak);
+        const riktning = this._vinnandeRiktning();
+        const r = board.emit('överlämning', { vad: 'jakt', wanted: this.state.wanted, förare: this.state.förare, riktning }, orsak);
         if (r && r.message) {
           let djup = '?'; try { djup = JSON.parse(r.message.text).djup; } catch { /* ok */ }
-          this._logga('ut', `Jakten på ${this.state.förare} lämnade Genomfarten (djup ${djup}).`);
+          this._logga('ut', `Jakten på ${this.state.förare} lämnade Genomfarten${riktning ? ' mot ' + riktning : ''} (djup ${djup}).`);
+          this._avgörCasino('fly');
           this.state.harJakt = false;
         } else {
           this._logga('slut', `Kedjan är slut — jakten på ${this.state.förare} svalnar på Genomfarten.`);
@@ -222,7 +374,12 @@ module.exports = {
 
   _grund() {
     return { kvarter: 'Genomfarten', wanted: 0, harJakt: false, förare: null, poliserUte: 0,
-      gripTryck: 0, gripMål: 0, jaktId: 0, platser, senaste: [], senasteHändelseTs: Date.now() };
+      gripTryck: 0, gripMål: 0, jaktId: 0, storlarm: false, riktningRöster: {},
+      casino: { öppen: false, fly: 0, gripen: 0, resultat: null },
+      kasino: { jackpot: 100, snurr: 0, senaste: null, senasteVinst: 0, utbetalt: 0, meddelande: 'Snurra för att spela!' },
+      rulett: { senasteNummer: null, senasteFärg: null, senasteVinst: 0, snurr: 0, meddelande: 'Satsa på en färg och snurra.' },
+      topp: [],
+      platser, senaste: [], senasteHändelseTs: Date.now() };
   },
 
   _läs() {

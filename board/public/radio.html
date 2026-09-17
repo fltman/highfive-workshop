@@ -39,7 +39,7 @@
 <script>
 const $ = id => document.getElementById(id), esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const prat = $('prat'), musik = $('musik'); let igång = false, data = { segment: [], musik: [], hälsningar: [] }, spelat = new Set(), sistaLåt = '', kö = [];
-const MUSIK_FULL = 0.55, MUSIK_UNDER = 0.10;
+const MUSIK_FULL = 0.75, MUSIK_UNDER = 0.17;
 function tona(till, ms = 1200) { const från = musik.volume, t0 = performance.now(); (function steg(t) { const k = Math.min(1, (t - t0) / ms); musik.volume = från + (till - från) * k; if (k < 1) requestAnimationFrame(steg); })(t0); }
 function visaNu(titel, text, låt) { const n = $('nu'); n.querySelector('.titel').textContent = titel; n.querySelector('.manus').textContent = text || ''; n.querySelector('.låt').textContent = låt ? '♪ ' + låt : ''; }
 function nästaLåt(önskad) {

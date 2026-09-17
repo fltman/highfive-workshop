@@ -3,92 +3,142 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Genomfarten — willebus</title>
+<title>Kasinot — willebus</title>
 <style>
   :root {
-    --bg: #10131a; --panel: #191d27; --gata: #23262f; --linje: #d7b04a; --text: #e8eaf0;
-    --dim: #8b90a0; --siren1: #ff3b3b; --siren2: #3b6bff; --stjärna: #ffd23b; --grip: #ff4d4d; --ok: #6fd08c;
+    --bg: #120e1a; --panel: #1b1526; --gata: #24202f; --linje: #d7b04a; --text: #f0ecf5;
+    --dim: #9a90ad; --siren1: #ff3b3b; --siren2: #3b6bff; --stjärna: #ffd23b; --grip: #ff4d4d;
+    --ok: #6fd08c; --guld: #ffcf5a; --lila: #a77bff; --neon: #ff5ea8;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body {
-    background: var(--bg); color: var(--text);
-    font: 15px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    background: radial-gradient(1200px 400px at 50% -80px, #2a1840, var(--bg));
+    color: var(--text); font: 15px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-x: hidden;
   }
+  body.alarm { animation: vign 1s ease-in-out infinite; }
+  @keyframes vign { 0%,100% { box-shadow: inset 0 0 0 0 transparent; } 50% { box-shadow: inset 0 0 120px 10px rgba(255,59,59,.35); } }
+  body.skak { animation: skak .4s; }
+  @keyframes skak { 0%,100%{transform:translate(0,0)} 20%{transform:translate(-6px,3px)} 40%{transform:translate(5px,-4px)} 60%{transform:translate(-4px,-3px)} 80%{transform:translate(4px,4px)} }
+  #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 50; transition: opacity .35s; }
+  #flash.röd { background: radial-gradient(circle, rgba(255,59,59,.5), transparent 70%); opacity: 1; }
+  #flash.grön { background: radial-gradient(circle, rgba(111,208,140,.55), transparent 70%); opacity: 1; }
+  #flash.guld { background: radial-gradient(circle, rgba(255,207,90,.55), transparent 70%); opacity: 1; }
+
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-  h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .5px; text-shadow: 0 0 12px rgba(167,123,255,.5); }
   .tagg { color: var(--dim); font-size: 12px; }
   .rad { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .stjärnor { font-size: 20px; letter-spacing: 2px; color: #3a3d47; }
+  .stjärnor { font-size: 20px; letter-spacing: 2px; color: #3a3448; }
   .stjärnor b { color: var(--stjärna); font-weight: 400; }
-  .scen {
-    position: relative; height: 110px; border-radius: 12px; overflow: hidden; background: var(--gata);
+  #ljud { margin-left: auto; background: #2a2438; color: var(--text); border: 0; border-radius: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+
+  fieldset { border: 1px solid #322a44; border-radius: 12px; padding: 12px 14px; background: var(--panel); margin: 0; }
+  legend { color: var(--guld); font-size: 13px; font-weight: 700; padding: 0 6px; }
+  .casino { border-color: #5a3a7a; box-shadow: 0 0 24px rgba(167,123,255,.15) inset; }
+
+  .slots { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .hjul { display: flex; gap: 8px; }
+  .hjul span { width: 60px; height: 60px; display: grid; place-items: center; font-size: 34px; background: #0d0a14; border: 2px solid #4a3a66; border-radius: 12px; box-shadow: 0 0 10px rgba(255,94,168,.2) inset; }
+  .hjul span.spin { animation: rulla .3s linear infinite; }
+  @keyframes rulla { 0%{transform:translateY(-5px)} 50%{transform:translateY(5px)} 100%{transform:translateY(-5px)} }
+  #snurra { background: linear-gradient(180deg, var(--guld), #e0a93a); color: #241a00; border: 0; border-radius: 12px; padding: 14px 22px; font-size: 17px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 0 #a97e1f; }
+  #snurra:active { transform: translateY(2px); box-shadow: 0 2px 0 #a97e1f; }
+  .jack { font-size: 14px; color: var(--guld); font-weight: 800; text-shadow: 0 0 10px rgba(255,207,90,.5); }
+  #kasinoMsg, #rulettMsg { font-size: 14px; color: var(--text); min-height: 18px; margin-top: 8px; }
+  .rbtn.röd { border-color: #a33; } .rbtn.svart { border-color: #667; } .rbtn.grön { border-color: #2a7a4a; color: var(--ok); }
+  #rNum { font-size: 28px; font-weight: 800; color: var(--dim); }
+  #rNum.röd { color: #ff5a5a; } #rNum.svart { color: #cfd3dd; } #rNum.grön { color: var(--ok); }
+  ol.topp { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 3px; }
+  ol.topp li { font-size: 13px; color: var(--guld); }
+  ol.topp li.tom { color: var(--dim); list-style: none; margin-left: -18px; }
+  .form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+  select, input { background: #120f1a; color: var(--text); border: 1px solid #322a44; border-radius: 8px; padding: 7px 9px; font-size: 14px; }
+  input { width: 130px; }
+  button.knapp { background: var(--linje); color: #1a1400; border: 0; border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  button.knapp:active { transform: translateY(1px); }
+
+  .scen { position: relative; height: 100px; border-radius: 12px; overflow: hidden; background: var(--gata);
     background-image: repeating-linear-gradient(90deg, transparent 0 44px, var(--linje) 44px 76px);
-    background-position-y: center; background-size: 100% 6px; background-repeat: no-repeat;
-  }
-  .bil { position: absolute; top: 50%; transform: translateY(-50%); left: -80px; font-size: 40px; transition: left 8s linear; }
+    background-position-y: center; background-size: 100% 6px; background-repeat: no-repeat; display: none; }
+  .scen.jakt { display: block; }
+  .bil { position: absolute; top: 50%; transform: translateY(-50%); left: -80px; font-size: 40px; transition: left 10s linear; }
   .scen.jakt .bil { left: calc(100% + 80px); }
-  .scen.tom .bil { display: none; }
   .siren { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
   .scen.jakt .siren { opacity: 1; animation: blink .5s steps(1) infinite; }
   @keyframes blink { 0% { box-shadow: inset 0 0 60px 8px var(--siren1); } 50% { box-shadow: inset 0 0 60px 8px var(--siren2); } }
 
-  .grip-panel { display: none; flex-direction: column; gap: 8px; }
-  .grip-panel.på { display: flex; }
-  #grip {
-    background: var(--grip); color: #fff; border: 0; border-radius: 10px; padding: 16px;
-    font-size: 20px; font-weight: 800; letter-spacing: 1px; cursor: pointer;
-  }
+  .kort { display: none; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid #322a44; border-radius: 12px; padding: 10px 12px; }
+  .kort.på { display: flex; }
+  .rubrik { color: var(--dim); font-size: 12px; }
+  #grip { background: var(--grip); color: #fff; border: 0; border-radius: 10px; padding: 15px; font-size: 19px; font-weight: 800; letter-spacing: 1px; cursor: pointer; }
   #grip:active { transform: translateY(1px); }
-  .mätare { height: 14px; border-radius: 8px; background: #2a2e39; overflow: hidden; }
+  .mätare { height: 12px; border-radius: 8px; background: #2a2438; overflow: hidden; }
   .mätare > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--stjärna), var(--ok)); transition: width .2s; }
+  .val { display: flex; gap: 6px; flex-wrap: wrap; }
+  .val button { background: #120f1a; color: var(--text); border: 1px solid #322a44; border-radius: 8px; padding: 7px 10px; font-size: 13px; cursor: pointer; }
+  .val button:active { transform: translateY(1px); }
+  .val button.fly { border-color: #6a5a2a; } .val button.gripen { border-color: #2a5a3a; }
 
   .status { font-size: 14px; color: var(--dim); min-height: 20px; }
   .status b { color: var(--text); }
-
-  fieldset { border: 1px solid #2a2e39; border-radius: 10px; padding: 10px 12px; background: var(--panel); }
-  legend { color: var(--dim); font-size: 12px; padding: 0 6px; }
-  .form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  select, input {
-    background: #11141c; color: var(--text); border: 1px solid #2a2e39; border-radius: 8px;
-    padding: 7px 9px; font-size: 14px;
-  }
-  input { width: 130px; }
-  button.knapp { background: var(--linje); color: #1a1400; border: 0; border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
-  button.knapp:active { transform: translateY(1px); }
-
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   li { font-size: 13px; color: var(--dim); display: flex; gap: 8px; }
   li .ik { width: 18px; text-align: center; }
-  li .in, li .larm { color: #ffd27f; } li .ut { color: #ff9f6f; } li .kupp { color: var(--siren1); } li .gripen { color: var(--ok); }
+  li .in, li .larm { color: #ffd27f; } li .ut { color: #ff9f6f; } li .kupp, li .storlarm { color: var(--siren1); }
+  li .gripen { color: var(--ok); } li .kasino { color: var(--guld); }
+  .konfetti { position: fixed; top: 28%; font-size: 26px; z-index: 60; pointer-events: none; animation: fall 1.2s ease-in forwards; }
+  @keyframes fall { to { transform: translateY(340px) rotate(360deg); opacity: 0; } }
 </style>
 </head>
 <body>
+  <div id="flash"></div>
   <header>
-    <h1>🚓 Genomfarten</h1>
-    <span class="tagg">team willebus · polisen &amp; jakten på #staden-puls</span>
+    <h1>🎰 Kasinot Genomfarten</h1>
+    <span class="tagg">team willebus · spela, vadslå &amp; fly polisen</span>
   </header>
 
   <div class="rad">
     <span class="stjärnor" id="wanted">☆☆☆☆☆</span>
     <span class="tagg" id="poliser"></span>
+    <button id="ljud">🔇 siren av</button>
   </div>
 
-  <div class="scen tom" id="scen">
-    <div class="siren"></div>
-    <div class="bil">🚗</div>
-  </div>
+  <!-- KASINOT: kvarterets ansikte -->
+  <fieldset class="casino">
+    <legend>🎰 Enarmade banditen</legend>
+    <div class="slots">
+      <div class="hjul" id="hjul"><span>🍒</span><span>🚗</span><span>💰</span></div>
+      <button id="snurra">SNURRA</button>
+      <span class="jack" id="jack">Jackpot: 100 marker</span>
+    </div>
+    <div id="kasinoMsg">Snurra för att spela! Tre 🚔 = razzia.</div>
+  </fieldset>
 
-  <div class="grip-panel" id="gripPanel">
-    <button id="grip">🚨 GRIP! — tryck allihop</button>
-    <div class="mätare"><i id="gripFyll"></i></div>
-  </div>
+  <!-- Roulette -->
+  <fieldset class="casino">
+    <legend>🎡 Roulette</legend>
+    <div class="slots">
+      <div class="hjul"><span id="rNum">–</span></div>
+      <div class="val">
+        <button class="rbtn röd" data-farg="röd">Röd 2x</button>
+        <button class="rbtn svart" data-farg="svart">Svart 2x</button>
+        <button class="rbtn grön" data-farg="grön">Grön 14x</button>
+      </div>
+    </div>
+    <div id="rulettMsg">Satsa på en färg och snurra hjulet.</div>
+  </fieldset>
 
-  <div class="status" id="status">Lugnt på Genomfarten.</div>
-
+  <!-- Topplista -->
   <fieldset>
-    <legend>Bygg din egen kupp</legend>
+    <legend>🏆 Största vinster</legend>
+    <ol id="topp" class="topp"><li class="tom">Inga vinster än — spela!</li></ol>
+  </fieldset>
+
+  <!-- Sätt igång en kupp: utlöser jakten (och kedjereaktioner i staden) -->
+  <fieldset>
+    <legend>💥 Sätt igång en kupp</legend>
     <div class="form">
       <select id="plats" title="Målkvarter"></select>
       <input id="forare" placeholder="förare (valfritt)" maxlength="40">
@@ -100,67 +150,188 @@
     </div>
   </fieldset>
 
+  <!-- RAZZIAN: allt nedan dyker upp när en jakt är igång -->
+  <div class="scen" id="scen"><div class="siren"></div><div class="bil">🚗</div></div>
+
+  <div class="kort" id="gripPanel">
+    <div class="rubrik">Kollektivt gripande — tryck allihop!</div>
+    <button id="grip">🚨 GRIP!</button>
+    <div class="mätare"><i id="gripFyll"></i></div>
+  </div>
+
+  <div class="kort" id="vägPanel">
+    <div class="rubrik">Vägval — rösta vart jakten ska styras</div>
+    <div class="val" id="vägVal"></div>
+  </div>
+
+  <div class="kort" id="vadPanel">
+    <div class="rubrik">Vadslå på utgången</div>
+    <div class="val">
+      <button class="fly" id="satsaFly">🏃 Flyr (<span id="cFly">0</span>)</button>
+      <button class="gripen" id="satsaGripen">🚔 Grips (<span id="cGripen">0</span>)</button>
+    </div>
+  </div>
+
+  <div class="status" id="status">Kasinot är öppet. Snurra banditen eller sätt igång en kupp!</div>
   <ul id="logg"></ul>
 
 <script>
   const bas = '/t/willebus';
-  const ikon = { in: '↘', ut: '↗', kupp: '💥', gripen: '🚔', slut: '·', patrull: '👮', delsvar: '💬', mörker: '🌑', brist: '🍬', larm: '🚨', dom: '⚖️', out: '·' };
-  let platserFyllda = false;
+  const ikon = { in:'↘', ut:'↗', kupp:'💥', gripen:'🚔', slut:'·', patrull:'👮', delsvar:'💬', mörker:'🌑', brist:'🍬', larm:'🚨', dom:'⚖️', natt:'🌃', storlarm:'📢', kasino:'🎰', out:'·' };
+  const HJUL = ['🍒','🚗','💰','💎','🚔','🍀'];
+  let platserFyllda = false, sistaTid = null, sirenPå = false, spinnar = false, rulettSpinnar = false;
+
+  let actx, osc, gain, sirenTimer;
+  function sirenStart() {
+    if (osc) return;
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    osc = actx.createOscillator(); gain = actx.createGain();
+    gain.gain.value = 0.05; osc.type = 'sawtooth'; osc.frequency.value = 600;
+    osc.connect(gain); gain.connect(actx.destination); osc.start();
+    let hög = false;
+    sirenTimer = setInterval(() => { hög = !hög; osc.frequency.setValueAtTime(hög ? 760 : 520, actx.currentTime); }, 400);
+  }
+  function sirenStopp() { if (sirenTimer) clearInterval(sirenTimer); if (osc) { try { osc.stop(); } catch {} osc = null; } }
+
+  function flash(kl) { const f = document.getElementById('flash'); f.className = kl; setTimeout(() => f.className = '', 350); }
+  function skaka() { document.body.classList.remove('skak'); void document.body.offsetWidth; document.body.classList.add('skak'); }
+  function konfetti(sym) {
+    const set = sym || ['🚔','🎉','⭐','💫'];
+    for (let i = 0; i < 18; i++) {
+      const d = document.createElement('div'); d.className = 'konfetti';
+      d.textContent = set[i % set.length];
+      d.style.left = (8 + Math.random() * 84) + 'vw'; d.style.animationDelay = (Math.random() * .3) + 's';
+      document.body.appendChild(d); setTimeout(() => d.remove(), 1600);
+    }
+  }
+  function nyHändelse(typ) {
+    if (typ === 'gripen') { flash('grön'); konfetti(); }
+    else if (typ === 'kupp' || typ === 'larm' || typ === 'storlarm') { flash('röd'); skaka(); }
+  }
+
+  function setHjul(arr) { const sp = document.querySelectorAll('#hjul span'); arr.forEach((v, i) => sp[i] && (sp[i].textContent = v)); }
+
+  async function POST(väg, body) {
+    try { await fetch(bas + väg, { method: 'POST', headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined }); } catch {}
+    tick();
+  }
+  window.post = POST;
 
   async function tick() {
-    let s;
-    try { s = await (await fetch(bas + '/state')).json(); } catch { return; }
+    let s; try { s = await (await fetch(bas + '/state')).json(); } catch { return; }
 
     if (!platserFyllda && Array.isArray(s.platser)) {
-      const sel = document.getElementById('plats');
-      sel.innerHTML = s.platser.map(p => '<option>' + p + '</option>').join('');
+      document.getElementById('plats').innerHTML = s.platser.map(p => '<option>' + p + '</option>').join('');
       platserFyllda = true;
     }
 
+    const topp = (s.senaste && s.senaste[0]) || null;
+    if (topp && topp.tid !== sistaTid) { if (sistaTid !== null) nyHändelse(topp.typ); sistaTid = topp.tid; }
+
     const w = Math.max(0, Math.min(5, s.wanted | 0));
     document.getElementById('wanted').innerHTML = '<b>' + '★'.repeat(w) + '</b>' + '☆'.repeat(5 - w);
-    document.getElementById('poliser').textContent = s.poliserUte ? '👮 ' + s.poliserUte + ' patruller ute' : '';
+    document.getElementById('poliser').textContent = s.poliserUte ? '👮 ' + s.poliserUte + ' patruller' : '';
 
     document.getElementById('scen').className = 'scen ' + (s.harJakt ? 'jakt' : 'tom');
+    document.body.classList.toggle('alarm', !!(s.harJakt && (w >= 5 || s.storlarm)));
+    if (sirenPå && s.harJakt) sirenStart(); else sirenStopp();
 
-    const panel = document.getElementById('gripPanel');
-    panel.className = 'grip-panel' + (s.harJakt ? ' på' : '');
+    document.getElementById('gripPanel').className = 'kort' + (s.harJakt ? ' på' : '');
     if (s.harJakt) {
       const andel = s.gripMål ? Math.min(100, Math.round(100 * (s.gripTryck || 0) / s.gripMål)) : 0;
       document.getElementById('gripFyll').style.width = andel + '%';
       document.getElementById('grip').textContent = '🚨 GRIP! — ' + (s.gripTryck || 0) + ' / ' + s.gripMål;
     }
 
-    document.getElementById('status').innerHTML = s.harJakt
-      ? 'Jakten pågår — <b>' + (s.förare || 'okänd') + '</b> flyr genom kvarteret. Tryck GRIP tillsammans!'
-      : (w > 0 ? 'Wanted svalnar…' : 'Lugnt på Genomfarten. Starta en kupp!');
+    document.getElementById('vägPanel').className = 'kort' + (s.harJakt ? ' på' : '');
+    if (s.harJakt) {
+      const röster = s.riktningRöster || {};
+      const mål = (s.platser || []).filter(p => p !== 'Genomfarten' && p !== 'Kasinot');
+      document.getElementById('vägVal').innerHTML = mål.map(m =>
+        '<button data-mal="' + m + '">' + m + ' (' + (röster[m] || 0) + ')</button>').join('');
+      document.querySelectorAll('#vägVal button').forEach(b =>
+        b.onclick = () => POST('/riktning', { mål: b.dataset.mal }));
+    }
 
-    const logg = document.getElementById('logg');
-    logg.innerHTML = '';
-    (s.senaste || []).forEach((e) => {
+    const c = s.casino || {};
+    document.getElementById('vadPanel').className = 'kort' + (s.harJakt && c.öppen ? ' på' : '');
+    document.getElementById('cFly').textContent = c.fly || 0;
+    document.getElementById('cGripen').textContent = c.gripen || 0;
+
+    const k = s.kasino || {};
+    if (k.senaste && !spinnar) setHjul(k.senaste);
+    document.getElementById('jack').textContent = 'Jackpot: ' + (k.jackpot || 0) + ' marker';
+    document.getElementById('kasinoMsg').textContent = (k.meddelande || '') + (k.senasteVinst ? '  (+' + k.senasteVinst + ' marker)' : '');
+
+    // Roulette
+    const rl = s.rulett || {};
+    if (!rulettSpinnar && rl.senasteNummer !== null && rl.senasteNummer !== undefined) {
+      const rn = document.getElementById('rNum'); rn.textContent = rl.senasteNummer; rn.className = rl.senasteFärg || '';
+    }
+    document.getElementById('rulettMsg').textContent = rl.meddelande || '';
+
+    // Topplista
+    if (s.topp && s.topp.length) {
+      document.getElementById('topp').innerHTML = s.topp.map(t => '<li>' + t.belopp + ' marker — ' + t.spel + '</li>').join('');
+    }
+
+    document.getElementById('status').innerHTML = s.harJakt
+      ? '🚨 Razzia! <b>' + (s.förare || 'okänd') + '</b> flyr — grip, styr eller vadslå!'
+      : (w > 0 ? 'Läget svalnar…' : 'Kasinot är öppet. Snurra banditen eller sätt igång en kupp!');
+
+    const logg = document.getElementById('logg'); logg.innerHTML = '';
+    (s.senaste || []).forEach(e => {
       const li = document.createElement('li');
       li.innerHTML = '<span class="ik ' + (e.typ || '') + '">' + (ikon[e.typ] || '·') + '</span><span>' + e.text + '</span>';
       logg.appendChild(li);
     });
   }
 
-  document.getElementById('grip').addEventListener('click', async () => {
-    try { await fetch(bas + '/grip', { method: 'POST' }); } catch {}
-    tick();
+  document.getElementById('grip').onclick = () => POST('/grip');
+  document.getElementById('satsaFly').onclick = () => POST('/satsa', { på: 'fly' });
+  document.getElementById('satsaGripen').onclick = () => POST('/satsa', { på: 'gripen' });
+  document.getElementById('kupp').onclick = () => POST('/kupp', {
+    plats: document.getElementById('plats').value,
+    förare: document.getElementById('forare').value,
+    wanted: Number(document.getElementById('wantedVal').value),
   });
 
-  document.getElementById('kupp').addEventListener('click', async () => {
-    const body = {
-      plats: document.getElementById('plats').value,
-      förare: document.getElementById('forare').value,
-      wanted: Number(document.getElementById('wantedVal').value),
-    };
-    try { await fetch(bas + '/kupp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); } catch {}
-    tick();
+  document.getElementById('snurra').onclick = async () => {
+    if (spinnar) return; spinnar = true;
+    const sp = document.querySelectorAll('#hjul span'); sp.forEach(x => x.classList.add('spin'));
+    const anim = setInterval(() => setHjul([0,0,0].map(() => HJUL[Math.floor(Math.random()*HJUL.length)])), 90);
+    try { await fetch(bas + '/snurra', { method: 'POST' }); } catch {}
+    setTimeout(async () => {
+      clearInterval(anim); sp.forEach(x => x.classList.remove('spin')); spinnar = false;
+      let s; try { s = await (await fetch(bas + '/state')).json(); } catch { return; }
+      if (s.kasino && s.kasino.senaste) setHjul(s.kasino.senaste);
+      if (s.kasino && s.kasino.senasteVinst >= 50) { flash('guld'); konfetti(['💰','🪙','⭐','💎']); }
+      else if (s.kasino && s.kasino.senasteVinst) flash('guld');
+      tick();
+    }, 700);
+  };
+
+  document.querySelectorAll('.rbtn').forEach(b => b.onclick = async () => {
+    if (rulettSpinnar) return; rulettSpinnar = true;
+    const rn = document.getElementById('rNum'); rn.classList.add('spin');
+    const anim = setInterval(() => { rn.textContent = Math.floor(Math.random() * 37); rn.className = 'spin'; }, 80);
+    try { await fetch(bas + '/rulett', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ färg: b.dataset.farg }) }); } catch {}
+    setTimeout(async () => {
+      clearInterval(anim); rulettSpinnar = false;
+      let s; try { s = await (await fetch(bas + '/state')).json(); } catch { return; }
+      const rl = s.rulett || {}; rn.textContent = rl.senasteNummer; rn.className = rl.senasteFärg || '';
+      if (rl.senasteVinst) { flash('guld'); if (rl.senasteVinst >= 50) konfetti(['💰','🪙','⭐','💎']); }
+      tick();
+    }, 700);
   });
 
-  tick();
-  setInterval(tick, 1500);
+  document.getElementById('ljud').onclick = () => {
+    sirenPå = !sirenPå;
+    document.getElementById('ljud').textContent = sirenPå ? '🔊 siren på' : '🔇 siren av';
+    if (!sirenPå) sirenStopp();
+  };
+
+  tick(); setInterval(tick, 1500);
 </script>
 </body>
 </html>
