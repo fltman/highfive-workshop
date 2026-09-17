@@ -21,6 +21,12 @@
   .p.bränd .q span{text-decoration:line-through;color:var(--dim)}
   .godis{color:#ff8fc7} .p.bränd.ny{animation:brinn 2.4s ease-out}
   @keyframes brinn{0%{box-shadow:0 0 0 2px #ff7a2f,0 0 18px #ff7a2f;background:#3a1d0c}60%{box-shadow:0 0 10px #ff7a2f}100%{box-shadow:none}}
+  /* Hovra (eller tryck) på en pärm för att läsa allt */
+  .full{display:none;margin-top:5px;padding-top:5px;border-top:1px dashed var(--kant);font-size:12px;white-space:pre-wrap;word-break:break-word}
+  .full b{color:var(--guld);font-weight:500} .full p{margin:3px 0}
+  .p{cursor:default} .p:hover,.p.öppen{background:#221c15}
+  .p:hover .q span,.p.öppen .q span,.p:hover .svar,.p.öppen .svar{white-space:normal;overflow:visible}
+  .p:hover .full,.p.öppen .full{display:block}
   .tomt{color:var(--dim);text-align:center;margin-top:28%;line-height:1.8}
 </style></head>
 <body>
@@ -28,6 +34,8 @@
 <div id="hylla"><div class="tomt">Hyllorna är tomma.<br>Ställ en fråga till staden, så slår Arkivet upp vad den redan sagt.<br><small>Tar sockret slut eldar Arkivet upp sitt äldsta minne.</small></div></div>
 <script>
 const sett = new Set();
+let öppen = null;   // tryck på en pärm på pekskärm: den förblir utfälld mellan omritningar
+document.addEventListener('click', e => { const p = e.target.closest('.p'); const id = p ? Number(p.dataset.id) : null; öppen = öppen === id ? null : id; document.querySelectorAll('.p').forEach(x => x.classList.toggle('öppen', Number(x.dataset.id) === öppen)); });
 let först = true;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -40,12 +48,13 @@ function rita({ pärmar, totalt, brända = 0 }) {
     const dom = p.bränd ? `🔥 blev ${p.bränd.godis}` : p.godkänt ? 'godkänt' : p.dom || (p.fel ? 'spärrad' : p.delsvar ? 'väntar på dom' : 'slår upp…');
     const ny = !först && !sett.has(p.id + ':' + dom);
     sett.add(p.id + ':' + dom);
-    return `<div class="p ${klass}${ny ? ' ny' : ''}">
+    return `<div class="p ${klass}${ny ? ' ny' : ''}${öppen === p.id ? ' öppen' : ''}" data-id="${p.id}">
       <div class="q"><span title="${esc(p.text)}">${p.varv > 1 ? `<i>varv ${p.varv} · </i>` : ''}${esc(p.text)}</span><i>#${p.id}</i></div>
       <div class="src">${p.bränd ? `<span class="godis">glömd · ${p.bränd.gram} g socker i sats [${p.bränd.sats}]</span>` : p.delsvar ? (källor.length ? 'källor ' + källor.map(k => `<u>[${k}]</u>`).join('') : 'inget i arkivet, sa det rakt ut') : ''}
         ${p.stenar.length ? `· ${p.stenar.length} sten${p.stenar.length === 1 ? '' : 'ar'}` : ''}
         <span class="dom ${klass}">${esc(dom)}</span></div>
       ${p.svar && !p.bränd ? `<div class="svar">staden: ${esc(p.svar.text)}</div>` : ''}
+      <div class="full">${p.delsvar ? `<p><b>Arkivet:</b> ${esc(p.delsvar.text)}</p>` : ''}${p.stenar.map(st => `<p><b>sten${st.vår ? ' (vår)' : ''}:</b> ${esc(st.varför)}${st.fitness != null ? ` · ${st.fitness}` : ''}</p>`).join('')}${p.godkänt ? `<p><b>Vaktkuren:</b> ${esc(p.godkänt.omdöme)}</p>` : ''}${p.fel ? `<p><b>spärrad:</b> ${esc(p.fel)}</p>` : ''}</div>
     </div>`;
   }).join('');
   först = false;
