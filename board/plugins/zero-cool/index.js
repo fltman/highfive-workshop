@@ -54,6 +54,11 @@
 // vi ändå tar emot och postar ingenting — utställning, inte verksamhet.
 const stålverket = require('./stalverket.js');
 
+// Växlingskontoret: SNAKE/MYB. Det handlar mot MyBank (team highfive) inom deras
+// eget kontrakt — lån-ansökan och återbetalning — och sätter aldrig realiserad
+// kurs själv. Bara bankens kvitton får göra det.
+const växeln = require('./vaxlingskontoret.js');
+
 const TAK_PER_MINUT = 6;
 const MAX_FRÅGOR = 12;
 const MAX_KÖ = 12;
@@ -246,6 +251,20 @@ function postaAngrepp(board, mål, fråga, extra, köpost) {
 // angreppet på stadens svar behöver alla delsvar bedömda för att kunna påstå att
 // staden valde det svagaste.
 
+// Växlingskontoret vill ibland posta inom MyBanks kontrakt. Det får det göra med
+// det som blir över när angreppen tagit sitt: kvarterets uppgift är att angripa,
+// valutan är utställning.
+const VÄXEL_RESERV = 2;            // angreppen behåller alltid så här mycket
+function växla(e, board) {
+  const kassa = stålverket.tillstånd().egen_bok.intäkt;
+  for (const post of växeln.händelse(e, kassa)) {
+    if (kvotKvar() <= VÄXEL_RESERV) return;
+    const svar = board.emit(post.typ, post.nyttolast, post.orsak);
+    if (svar && svar.error) return;
+    state.egnaEmits.push(Date.now());
+  }
+}
+
 function drivKön(board) {
   while (state.kö.length && kvotKvar() > 0) {
     const post = state.kö.shift();
@@ -310,7 +329,10 @@ function ta(e, tyst, board) {
 
   // Stålverket räknar bara på det som händer nu. Vid uppstart spelar vi inte om
   // historiken i det, annars smälter det tusen ton på en sekund.
-  if (!tyst) { try { stålverket.händelse(e); } catch (fel) { console.error('[zero-cool] smältan:', fel.message); } }
+  if (!tyst) {
+    try { stålverket.händelse(e); } catch (fel) { console.error('[zero-cool] smältan:', fel.message); }
+    try { växla(e, board); } catch (fel) { console.error('[zero-cool] växeln:', fel.message); }
+  }
 
   if (e.typ === 'fråga') {
     if (state.frågor.has(e.id)) return;
@@ -443,6 +465,7 @@ module.exports = {
         kyrkogård: state.kyrkogård.slice(0, 5),
         senast: state.senast,
         smältan: stålverket.tillstånd(),
+        växeln: växeln.tillstånd(stålverket.tillstånd().egen_bok.intäkt),
         frågor,
       }));
       return true;

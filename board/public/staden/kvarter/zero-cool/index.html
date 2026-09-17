@@ -209,6 +209,28 @@
   .vaxlare i { width: 1.3vmin; height: 1.3vmin; border-radius: 50%; background: var(--stal-svag); }
   .vaxlare i.pa { background: var(--hal); }
 
+  /* Växlingskontoret: två kurser för samma mynt. */
+  .kurser { display: grid; grid-template-columns: 1fr 1fr; gap: 2vmin; align-items: start; }
+  .kurs h3 {
+    margin: 0 0 .5vmin; font-size: 2.4vmin; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dim); font-weight: 400;
+  }
+  .kurs .n {
+    font-family: 'Chakra Petch', sans-serif; font-weight: 700; font-size: 8.4vmin; line-height: 1;
+  }
+  .kurs.vi .n { color: var(--klar); }
+  .kurs.marknad .n { color: var(--hal); }
+  .kurs .u { font-size: 2.3vmin; color: var(--dim); margin-top: .4vmin; }
+  .gap {
+    margin-top: 1vmin; font-size: 2.7vmin; color: #b9bec6; line-height: 1.35;
+  }
+  .gap b { color: var(--hal); font-weight: 500; }
+  .gap .skuld { color: var(--tro); }
+  .banksvar {
+    font-size: 2.4vmin; color: var(--dim); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; padding-bottom: 3.4vmin;
+  }
+
   .tomt { color: var(--dim); font-size: 3.2vmin; align-self: center; }
   header, .fraga, .traff, .prover { animation: fram .5s ease-out both; }
   .fraga { animation-delay: .06s; } .traff { animation-delay: .12s; } .prover { animation-delay: .18s; }
@@ -328,7 +350,58 @@
   </div>
 </div>
 
-<div class="vaxlare" id="vaxlare"><i class="pa"></i><i></i></div>
+
+<div class="ram panel dold" id="panel-vaxeln">
+  <header>
+    <svg class="invader" viewBox="0 0 11 8" role="img" aria-label="zero-cool">
+      <g class="ram-a">
+        <rect x="2" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/>
+        <rect x="3" y="1" width="1" height="1"/><rect x="7" y="1" width="1" height="1"/>
+        <rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/><rect x="8" y="2" width="1" height="1"/>
+        <rect x="1" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="8" y="3" width="1" height="1"/><rect x="9" y="3" width="1" height="1"/>
+        <rect x="0" y="4" width="1" height="1"/><rect x="1" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="4" width="1" height="1"/><rect x="6" y="4" width="1" height="1"/><rect x="7" y="4" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="9" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/>
+        <rect x="0" y="5" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="3" y="5" width="1" height="1"/><rect x="4" y="5" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="5" width="1" height="1"/><rect x="7" y="5" width="1" height="1"/><rect x="8" y="5" width="1" height="1"/><rect x="10" y="5" width="1" height="1"/>
+        <rect x="0" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/>
+        <rect x="3" y="7" width="1" height="1"/><rect x="4" y="7" width="1" height="1"/><rect x="6" y="7" width="1" height="1"/><rect x="7" y="7" width="1" height="1"/>
+      </g>
+      <g class="ram-b">
+        <rect x="2" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/>
+        <rect x="0" y="1" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="7" y="1" width="1" height="1"/><rect x="10" y="1" width="1" height="1"/>
+        <rect x="0" y="2" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/><rect x="8" y="2" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/>
+        <rect x="0" y="3" width="1" height="1"/><rect x="1" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="8" y="3" width="1" height="1"/><rect x="9" y="3" width="1" height="1"/><rect x="10" y="3" width="1" height="1"/>
+        <rect x="0" y="4" width="1" height="1"/><rect x="1" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="4" width="1" height="1"/><rect x="6" y="4" width="1" height="1"/><rect x="7" y="4" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="9" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/>
+        <rect x="1" y="5" width="1" height="1"/><rect x="2" y="5" width="1" height="1"/><rect x="3" y="5" width="1" height="1"/><rect x="4" y="5" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/><rect x="6" y="5" width="1" height="1"/><rect x="7" y="5" width="1" height="1"/><rect x="8" y="5" width="1" height="1"/><rect x="9" y="5" width="1" height="1"/>
+        <rect x="2" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/>
+        <rect x="1" y="7" width="1" height="1"/><rect x="9" y="7" width="1" height="1"/>
+      </g>
+    </svg>
+    <div class="namn">Väx<i>eln</i></div>
+    <div class="stampel" id="vaxel-status">aldrig omsatt</div>
+    <div class="status" id="vaxel-par">SNAKE/MYB</div>
+  </header>
+
+  <div class="fraga">vår valuta mot stadens, som MyBank gav ut</div>
+
+  <div class="kurser">
+    <div class="kurs vi">
+      <h3>noterad kurs</h3>
+      <div class="n" id="kurs-vi">·</div>
+      <div class="u">MyBanks per SnakeCoin, satt av oss</div>
+    </div>
+    <div class="kurs marknad">
+      <h3>realiserad kurs</h3>
+      <div class="n" id="kurs-marknad">—</div>
+      <div class="u">vad någon annan faktiskt betalat</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="gap" id="vaxel-gap">·</div>
+    <div class="banksvar" id="vaxel-svar"></div>
+  </div>
+</div>
+
+<div class="vaxlare" id="vaxlare"><i class="pa"></i><i></i><i></i></div>
 
 <script>
 const API = '/t/zero-cool/bakdorren';
@@ -449,13 +522,36 @@ function ritaSmältan(sm) {
     : (sm.logg && sm.logg[0] ? sm.logg[0].vad : 'bandet går');
 }
 
-// Rutan visar två saker och hinner med båda: angreppen mest, stålverket var
+// Växlingskontoret. Vänster tal sätter vi själva, höger tal sätter staden. Att de
+// inte är samma tal är hela utställningen.
+function ritaVäxeln(v) {
+  if (!v) return;
+  el('kurs-vi').textContent = v.noterad_kurs;
+  el('kurs-marknad').textContent = v.realiserad_kurs === null ? '—' : v.realiserad_kurs;
+  const st = el('vaxel-status');
+  st.textContent = v.aldrig_omsatt ? 'aldrig omsatt' : 'omsatt';
+  st.className = 'stampel' + (v.aldrig_omsatt ? '' : ' klar');
+
+  const g = el('vaxel-gap');
+  g.replaceChildren(
+    document.createTextNode('Kassa ' + v.kassa_snakecoin.toLocaleString('sv-SE') + ' SnakeCoin: '),
+    nod('b', v.värde_enligt_oss.toLocaleString('sv-SE') + ' MyBanks enligt oss'),
+    document.createTextNode(', ' + v.värde_enligt_marknaden + ' enligt marknaden. '),
+    nod('span', v.skuld_i_mybanks ? 'Skuld till banken: ' + v.skuld_i_mybanks + ' MyBanks.' : '', 'skuld'),
+  );
+  const svar = (v.bankens_svar || [])[0];
+  el('vaxel-svar').textContent = svar
+    ? 'banken: ' + (svar.godtog_snakecoin ? 'tog emot SnakeCoin' : 'tog inte emot SnakeCoin') + (svar.text ? ' — ' + svar.text : '')
+    : (v.logg && v.logg[0] ? v.logg[0].vad : 'inget svar från banken än');
+}
+
+// Rutan visar tre saker och hinner med alla: angreppen mest, stålverket var
 // tredje halvminut. Storskärmen ska hinna läsa, inte blinka.
+const PANELER = ['panel-angrepp', 'panel-smaltan', 'panel-vaxeln'];
 let panel = 0;
 function växla() {
-  panel = (panel + 1) % 2;
-  el('panel-angrepp').classList.toggle('dold', panel !== 0);
-  el('panel-smaltan').classList.toggle('dold', panel !== 1);
+  panel = (panel + 1) % PANELER.length;
+  PANELER.forEach((id, i) => el(id).classList.toggle('dold', i !== panel));
   const prickar = el('vaxlare').children;
   for (let i = 0; i < prickar.length; i++) prickar[i].className = i === panel ? 'pa' : '';
 }
@@ -464,7 +560,7 @@ setInterval(växla, 14000);
 let hämtar = false;
 async function hämta() {
   if (hämtar) return; hämtar = true;
-  try { const d = await fetch(API, { cache: 'no-store' }).then(r => r.json()); rita(d); ritaSmältan(d.smältan); }
+  try { const d = await fetch(API, { cache: 'no-store' }).then(r => r.json()); rita(d); ritaSmältan(d.smältan); ritaVäxeln(d.växeln); }
   catch (e) { el('status').textContent = 'backenden svarar inte'; }
   finally { hämtar = false; }
 }
