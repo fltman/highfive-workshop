@@ -20,6 +20,7 @@ const WANTED_MAX = 5;
 const SVALNAR_MS = 60 * 1000;   // wanted −1 per minut utan händelse
 const OVERLAMNING_MS = 8000;    // hur länge jakten stannar hos oss innan den skickas vidare
 const förare = ['Röda Sköden', 'Bagarn', 'Loff', 'Tvillingen', 'Doris 78', 'Kajan'];
+const platser = ['Genomfarten', 'Godisfabriken', 'Hamnkontoret', 'Banken'];
 
 module.exports = {
   init(ctx) {
@@ -33,21 +34,30 @@ module.exports = {
       this._svalna();
       return this._json(res, 200, this.state);
     }
-    // En kupp startar en jakt som ger sig ut i staden
+    // En kupp startar en jakt som ger sig ut i staden. Ibland mot Godisfabriken (@christian).
     if (req.method === 'POST' && p === '/kupp') {
-      const wanted = 1 + Math.floor(Math.random() * 3);
-      const namn = förare[Math.floor(Math.random() * förare.length)];
-      this.state.wanted = Math.min(WANTED_MAX, wanted);
-      this.state.harJakt = true;
-      this.state.förare = namn;
-      this._logga('kupp', `Kupp på Genomfarten! ${namn} flyr, wanted ${this.state.wanted}★`);
-      const r = board.emit('kupp', { wanted: this.state.wanted, plats: 'Genomfarten' });
-      const orsak = r && r.message ? r.message.id : undefined;
-      this._planeraÖverlämning(board, orsak);
-      this._spara();
+      const plats = platser[Math.floor(Math.random() * platser.length)];
+      this._startaKupp(board, plats);
       return this._json(res, 200, this.state);
     }
     return false; // → 404
+  },
+
+  // Startar en kupp: höjer wanted, postar kupp på pulsen och skickar jakten vidare.
+  // orsak sätts när kuppen är en reaktion (t.ex. på godis-klart), annars är den kedjans start.
+  _startaKupp(board, plats, orsak) {
+    if (this.state.harJakt) return false;
+    const wanted = 1 + Math.floor(Math.random() * 3);
+    const namn = förare[Math.floor(Math.random() * förare.length)];
+    const r = board.emit('kupp', { wanted, plats }, orsak);
+    if (!(r && r.message)) return false;              // ekospärren nekade (för djup kedja) — ingen storm
+    this.state.wanted = Math.min(WANTED_MAX, wanted);
+    this.state.harJakt = true;
+    this.state.förare = namn;
+    this._logga('kupp', `Kupp på ${plats}! ${namn} flyr, wanted ${this.state.wanted}★`);
+    this._planeraÖverlämning(board, r.message.id);
+    this._spara();
+    return true;
   },
 
   // Varje händelse från ett ANNAT kvarter på #staden-puls
@@ -82,6 +92,18 @@ module.exports = {
         this.state.poliserUte = Math.max(0, (this.state.poliserUte || 0) - 1);
         this._logga('mörker', `Strömavbrott (@${e.från}) — patrullerna kör blint på Genomfarten.`);
       }
+      this._spara();
+      return;
+    }
+    // Godisfabriken (@christian): en färsk sats är ett nytt byte. Tjuven slår till på lagret.
+    if (e.typ === 'godis-klart') {
+      if (this.state.harJakt) return;                 // redan en jakt igång
+      this._startaKupp(board, 'Godisfabriken', e.id); // orsak-länkad; nekas den (för djup) svalnar det bara
+      return;
+    }
+    // Bristen efter kuppen är vår. Vi kvitterar den synligt.
+    if (e.typ === 'socker-slut') {
+      this._logga('brist', `Lagret på Godisfabriken är tömt (@${e.från}) — bristen efteråt är vårt jobb.`);
       this._spara();
     }
   },
