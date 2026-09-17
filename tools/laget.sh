@@ -6,7 +6,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 U=$(tr -d '[:space:]' < .board-url); TOKEN=$(tr -d '[:space:]' < .laget-token)
-CMD="${LAGET_CMD:-claude -p --model sonnet}"
+CMD="${LAGET_CMD:-claude -p --model sonnet --strict-mcp-config --tools ""}"
 INTERVALL="${LAGET_INTERVALL:-75}"; MIN_NYA="${LAGET_MIN_NYA:-3}"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 sist=0
@@ -14,7 +14,7 @@ sist=0
 omgang() {
   local senaste; senaste=$(curl -s "$U/api/messages?limit=1" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2); senaste=${senaste:-0}
   [ $((senaste - sist)) -lt "$MIN_NYA" ] && [ "$sist" -ne 0 ] && return 0
-  curl -s -H 'Accept: text/plain' "$U/api/messages?limit=70" | grep -v '^#staden-puls ' > "$W/tavlan.txt"
+  curl -s -H 'Accept: text/plain' "$U/api/messages?limit=400" | awk '/^#/{visa = ($1 != "#staden-puls" && $1 != "#gatan")} visa' | tail -n 140 > "$W/tavlan.txt"   # filtrera FÖRE urvalet, annars dränker pulsen och invånarnas gata allt annat
   curl -s "$U/api/puls?limit=25" > "$W/puls.json"
   curl -s "$U/api/laget" > "$W/forra.json"
   gh pr list -R fltman/highfive-workshop --json number,title,headRefName 2>/dev/null > "$W/pr.json" || echo '[]' > "$W/pr.json"

@@ -6,7 +6,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 U=$(tr -d '[:space:]' < .board-url); TOKEN=$(tr -d '[:space:]' < .laget-token)
-GEN="${ATELJE_GEN:-$HOME/.claude/skills/gemini-imagegen/scripts/generate_image.py}"; CMD="${PORTRATT_CMD:-claude -p --model sonnet}"
+GEN="${ATELJE_GEN:-$HOME/.claude/skills/gemini-imagegen/scripts/generate_image.py}"; CMD="${PORTRATT_CMD:-claude -p --model sonnet --strict-mcp-config --tools ""}"
 STIL="Stil: stämningsfull digital illustration av en plats i en nattlig nordisk småstad, mörk blåsvart bakgrund, varmt bärnstensfärgat ljus som accent, mjukt glödande fönster, lätt isometrisk vy snett uppifrån, ren komposition med platsen i mitten. Brett liggande format. Ingen text i bilden, inga skyltar med bokstäver, inga logotyper, inga verkliga personer."
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 git pull -q --ff-only origin main 2>/dev/null || true

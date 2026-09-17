@@ -10,3 +10,4 @@ projects/*/.claude/settings.local.json
 .tidning-state
 .radio-state
 .radio-tecken
+__pycache__/

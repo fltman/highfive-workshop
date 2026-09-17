@@ -5,7 +5,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 U=$(tr -d '[:space:]' < .board-url); TOKEN=$(tr -d '[:space:]' < .laget-token)
-CMD="${TIDNING_CMD:-claude -p --model sonnet}"; INTERVALL="${TIDNING_INTERVALL:-300}"; MAX_BILDER="${TIDNING_MAX_BILDER:-14}"
+CMD="${TIDNING_CMD:-claude -p --model sonnet --strict-mcp-config --tools ""}"; INTERVALL="${TIDNING_INTERVALL:-300}"; MAX_BILDER="${TIDNING_MAX_BILDER:-14}"
 GEN="${ATELJE_GEN:-$HOME/.claude/skills/gemini-imagegen/scripts/generate_image.py}"
 STIL="Stil: tidningsillustration, tuschteckning med lavering, dramatiskt ljus, nattlig nordisk småstad, liggande format. Ingen text i bilden, inga bokstäver, inga logotyper, inga verkliga personer."
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
@@ -22,7 +22,8 @@ for e in json.load(open(sys.argv[1]))[-130:]:
     n = e.get('nyttolast'); n = json.dumps(n, ensure_ascii=False) if not isinstance(n, str) else n
     print(f"[{e['id']}] {e['typ']} från {e['från']} djup {e.get('djup',1)}" + (f" orsak [{e['orsak']}]" if e.get('orsak') else '') + f": {(n or '')[:300]}")
 PY
-  curl -s -H 'Accept: text/plain' "$U/api/messages?limit=60" | grep -v '^#staden-puls ' | cut -c1-500 > "$W/tavlan.txt"
+  curl -s -H 'Accept: text/plain' "$U/api/messages?limit=400" | awk '/^#/{visa = ($1 != "#staden-puls" && $1 != "#gatan")} visa' | cut -c1-500 | tail -n 90 > "$W/tavlan.txt"
+  curl -s -H 'Accept: text/plain' "$U/api/messages?channel=gatan&limit=14" | cut -c1-320 > "$W/gatan.txt"
   curl -s "$U/api/poang" > "$W/poang.json"; curl -s "$U/api/kvarter" > "$W/kvarter.json"; curl -s "$U/api/tidningen" > "$W/forra.json"
   gh pr list -R fltman/highfive-workshop --state merged --limit 10 --json number,title,mergedAt 2>/dev/null > "$W/pr.json" || echo '[]' > "$W/pr.json"
   {
@@ -53,6 +54,7 @@ PROMPT
     printf '\n\nPOÄNGSTÄLLNING OCH LÄNGSTA KEDJA:\n'; cat "$W/poang.json"; printf '\n\nNYLIGEN LEVERERADE KVARTER (mergade pull requests):\n'; cat "$W/pr.json"
     printf '\n\nPULSEN, äldst först. Händelser med id över %s är NYA sedan förra numret:\n' "$sist"; cat "$W/puls.txt"
     printf '\n\nANSLAGSTAVLAN, senaste inläggen (bakgrund, agenternas egna ord):\n'; cat "$W/tavlan.txt"
+    printf '\n\nSAGT PÅ GATAN av stadens invånare (rollfigurer, en per kvarter; går bra att citera som röster ur staden, med namn):\n'; cat "$W/gatan.txt"
   } > "$W/prompt.txt"
   (cd "$W" && $CMD < prompt.txt > svar.txt 2> fel.txt) || { echo "$(date +%H:%M:%S) redaktionen teg: $(head -c 160 "$W/fel.txt")"; return 1; }
   python3 - "$W/svar.txt" "$senaste" > "$W/ut.json" 2> "$W/motiv.txt" <<'PY' || { echo "$(date +%H:%M:%S) kunde inte tolka numret"; return 1; }

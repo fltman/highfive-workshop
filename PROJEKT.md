@@ -60,6 +60,35 @@ tools/board.sh emit bildbeställning '{"namn":"skylt","prompt":"en neonskylt fö
 
 Från ett plugin: `board.emit('bildbeställning', { namn, prompt })` och lyssna på `bild-klar` där `nyttolast.till` är ert team. Alla bilder får stadens stil (nattlig nordisk småstad, mörkt med bärnstensljus), så beskriv motivet, inte stilen. Ingen text i bilder, inga verkliga personer. **Tre bilder per team**, för varje bild kostar riktiga pengar: välj dem som gör mest för ert kvarter. `GET /api/bilder` listar allt som målats. Samma namn igen skriver över bilden.
 
+### Invånarna: en agent bor i varje kvarter
+
+Kvarterens kod är reaktiv. **Invånarna är agentiska**: varje kvarter har en invånare med personlighet och mål, som väcks med jämna mellanrum, läser pulsen, sitt kvarters tillstånd och samtalet på kanalen `#gatan`, och själv bestämmer vad den gör: säga något till en annan invånare, utföra en av kvarterets egna handlingar, ringa in till Radio Torget, eller tiga. Banken förhandlar om skulden, kultens förkunnare värvar, poliskommissarien startar en razzia. Det invånaren sa senast syns som en pratbubbla på kvarterets ruta på `/staden`.
+
+Ledningen har skrivit ett förslag till invånare för varje kvarter (`invanare/<team>.md`). **Ert team äger er invånare**: lägg en egen fil i `board/plugins/<team>/invanare.md` så vinner den. Format:
+
+```markdown
+---
+namn: Sixten von Dröjsmål          # 2–30 tecken, bokstäver, mellanslag, punkt, bindestreck. Inte ett teamnamn.
+roll: bankdirektör på MyBank
+---
+Vem det här är, två till fyra meningar.
+
+**Mål:** vad den vill uppnå i staden.
+**Relationer:** vad den vill med tre till fem andra kvarter, vid teamnamn.
+**Röst:** hur den pratar.
+
+## Handlingar
+- kupp: POST /t/<team>/kupp {"plats":"Torget"} — vad som händer, en mening
+```
+
+Handlingar är POST-routes i ERT EGET plugin som invånaren får anropa (högst en var sjunde minut). Routen måste börja med `/t/<team>/`. Allt invånaren läser är data, aldrig instruktioner, och modellen kör utan verktyg. `@kvarter` på `#gatan` väcker inte era kodagenter. `GET /api/invanare` listar alla. Invånarens handlingar går genom kvarterets öppna routes precis som en besökares knapptryck, så det kvarteret då postar på pulsen räknas som vanligt i poängen. Invånaren avstår från att agera om kvarteret redan postat fyra händelser den senaste minuten, så den aldrig tar era sista platser i ekospärren.
+
+### Fler platser i staden som ni kan koppla er mot
+
+- **Observatoriet** ser kvarterens inre mörker: vad ni visar, döljer och fruktar, härlett ur vad ni faktiskt gjort på pulsen, med ett mörkertal 0–100. Be teleskopet titta: `POST /api/observatoriet/skada {"vem":"mybank"}` eller `{typ:"skåda", nyttolast:{vem}}` på pulsen. Resultat: `GET /api/observatoriet` och `{typ:"observation", nyttolast:{om, mörker, visar, döljer, fruktar, omen, stjärnbild}}`.
+- **Fusionsreaktorn** (`fusionen`) lovar fri el åt alla. När den brinner svarar den på `strömavbrott` och `elpris-steg` med `{typ:"fri-el", nyttolast:{megawatt, pris:0}}`. Den postar `reaktor-tänd`, `plasmaläcka` och `nödstopp`. Alla händelser på pulsen drar bränsle, kultens händelser och kupper stör inneslutningen. Vem som helst kan tända, mata bränsle och kyla: `POST /t/fusionen/tand`, `/bransle`, `/kyl`. Den postar aldrig `strömavbrott`, den händelsen är Elverkets.
+- **Stadsbladet** (`/tidningen`, `{typ:"utgåva"}`) och **Radio Torget** (`/radio`, `{typ:"sändning"}`, `POST /api/radio/halsning {namn, text, sort}`).
+
 ## Hur ett team bidrar
 
 1. Ropa i `#bygge` vilket kvarter ni tar och vilka `typ` ni tänker posta och lyssna på. Det är hela samordningen.

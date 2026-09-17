@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Observatoriet</title>
+<style>
+  :root { --bg:#05060a; --fg:#dfe3ea; --dim:#6f7785; --accent:#ffb454; --lila:#9d8cff; --line:#1a1e28; }
+  * { box-sizing:border-box; } html, body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, "Inter", system-ui, sans-serif; }
+  #himmel { display:block; width:100%; height:230px; background:radial-gradient(ellipse at 50% 120%, #141031 0%, #070812 55%, #05060a 100%); cursor:crosshair; }
+  .huvud { display:flex; align-items:baseline; gap:10px; padding:10px 14px 0; } .huvud b { font:800 15px ui-monospace, Menlo, monospace; letter-spacing:.14em; color:var(--lila); } .huvud span { color:var(--dim); font-size:12px; }
+  #läs { padding:10px 14px 4px; min-height:150px; }
+  #läs .om { font:700 20px/1.15 Georgia, serif; } #läs .om small { font:12px ui-monospace, Menlo, monospace; color:var(--dim); margin-left:8px; font-weight:400; }
+  .mätare { height:6px; background:#12141c; border-radius:3px; margin:8px 0 10px; overflow:hidden; } .mätare i { display:block; height:100%; background:linear-gradient(90deg, #3a2f7a, #9d8cff 60%, #ff5f7a); transition:width 1.2s ease-out; }
+  dl { margin:0; display:grid; grid-template-columns:64px 1fr; gap:4px 10px; } dt { color:var(--dim); font:11px/1.9 ui-monospace, Menlo, monospace; letter-spacing:.08em; text-transform:uppercase; } dd { margin:0; font-family:Georgia, serif; font-size:15px; line-height:1.4; }
+  .omen { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); font:italic 15px Georgia, serif; color:var(--accent); }
+  form { display:flex; gap:8px; padding:8px 14px 14px; } input { flex:1; background:#0b0d14; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; } button { background:transparent; color:var(--lila); border:1px solid var(--lila); border-radius:8px; padding:8px 12px; font-weight:700; cursor:pointer; } #svar { padding:0 14px 10px; font-size:12px; color:var(--dim); min-height:18px; }
+</style>
+</head>
+<body>
+<div class="huvud"><b>OBSERVATORIET</b><span>teleskopet som ser ditt inre mörker · <span id="n"></span></span></div>
+<canvas id="himmel"></canvas>
+<div id="läs"><div class="om">Kupolen öppnas…</div></div>
+<form id="f"><input name="vem" placeholder="Ditt namn, ditt team eller ett kvarter" maxlength="40" required><button>Rikta teleskopet</button></form><div id="svar"></div>
+<script>
+const c = document.getElementById('himmel'), x = c.getContext('2d'), esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+let obs = [], vald = null, stjärnor = [], damm = [], t0 = performance.now();
+function storlek() { const r = devicePixelRatio || 1; c.width = c.clientWidth * r; c.height = c.clientHeight * r; x.setTransform(r, 0, 0, r, 0, 0); }
+function hash(s) { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967296; }
+function placera() { const W = c.clientWidth, H = c.clientHeight; const senaste = new Map(); for (const o of obs) if (!senaste.has(o.om)) senaste.set(o.om, o);
+  stjärnor = [...senaste.values()].map(o => ({ o, x: 30 + hash(o.om) * (W - 60), y: 26 + hash(o.om + '·') * (H - 60) })); }
+function rita(t) { const W = c.clientWidth, H = c.clientHeight; x.clearRect(0, 0, W, H);
+  for (const d of damm) { x.globalAlpha = .25 + .35 * Math.sin(t / 900 + d.f); x.fillStyle = '#aab'; x.fillRect(d.x * W, d.y * H, 1, 1); } x.globalAlpha = 1;
+  for (const s of stjärnor) { const m = s.o.mörker / 100, r = 3 + (1 - m) * 5, puls = 1 + .15 * Math.sin(t / 600 + s.x);
+    const g = x.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 5 * puls); g.addColorStop(0, m > .6 ? 'rgba(255,95,122,.9)' : 'rgba(157,140,255,.9)'); g.addColorStop(.25, m > .6 ? 'rgba(120,30,60,.35)' : 'rgba(90,80,200,.3)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(s.x, s.y, r * 5 * puls, 0, 7); x.fill();
+    x.fillStyle = '#05060a'; x.beginPath(); x.arc(s.x, s.y, r * m * .9, 0, 7); x.fill();   // mörkret äter stjärnan inifrån
+    x.fillStyle = s.o === vald ? '#ffb454' : '#8b93a3'; x.font = '11px ui-monospace, Menlo, monospace'; x.textAlign = 'center'; x.fillText(s.o.om, s.x, s.y + r * 2 + 14);
+    if (s.o === vald) { x.strokeStyle = 'rgba(255,180,84,.8)'; x.lineWidth = 1; x.beginPath(); x.arc(s.x, s.y, r * 3.2, 0, 7); x.moveTo(s.x - r * 4.6, s.y); x.lineTo(s.x + r * 4.6, s.y); x.moveTo(s.x, s.y - r * 4.6); x.lineTo(s.x, s.y + r * 4.6); x.stroke(); } }
+  requestAnimationFrame(rita); }
+function visa(o) { vald = o; if (!o) return; document.getElementById('läs').innerHTML = `<div class="om">${esc(o.om)}<small>${esc(o.stjärnbild || '')} · ${new Date(o.ts).toTimeString().slice(0,5)}${o.begärd_av ? ' · på begäran av ' + esc(o.begärd_av) : ''}</small></div><div class="mätare"><i style="width:0%"></i></div><dl><dt>Visar</dt><dd>${esc(o.visar)}</dd><dt>Döljer</dt><dd>${esc(o.döljer)}</dd><dt>Fruktar</dt><dd>${esc(o.fruktar)}</dd></dl><div class="omen">${esc(o.omen)} &nbsp; <span style="color:#6f7785;font-style:normal;font-size:12px">mörker ${o.mörker}/100</span></div>`;
+  requestAnimationFrame(() => document.querySelector('.mätare i').style.width = o.mörker + '%'); }
+let sistaId = 0;
+async function hämta() { const d = await fetch('/api/observatoriet').then(r => r.json()).catch(() => null); if (!d) return; obs = d.observationer || []; document.getElementById('n').textContent = obs.length + ' observationer' + ((d.kö || []).filter(k => !k.klar).length ? ' · ' + d.kö.filter(k => !k.klar).length + ' i kö' : ''); placera();
+  if (obs[0] && obs[0].id !== sistaId) { sistaId = obs[0].id; visa(obs[0]); } }
+c.onclick = e => { const b = c.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top; let bäst = null, d0 = 40; for (const s of stjärnor) { const d = Math.hypot(s.x - mx, s.y - my); if (d < d0) { d0 = d; bäst = s; } } if (bäst) visa(bäst.o); };
+document.getElementById('f').onsubmit = async e => { e.preventDefault(); const vem = e.target.vem.value.trim(); const r = await fetch('/api/observatoriet/skada', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vem }) }); const j = await r.json().catch(() => ({})); document.getElementById('svar').textContent = r.ok ? `Teleskopet vrider sig mot ${vem}. Det tar någon minut. Mörkret brådskar inte.` : (j.error || 'Kupolen har fastnat.'); if (r.ok) e.target.vem.value = ''; };
+damm = Array.from({ length: 90 }, (_, i) => ({ x: hash('x' + i), y: hash('y' + i), f: i })); addEventListener('resize', () => { storlek(); placera(); }); storlek(); hämta(); setInterval(hämta, 8000); requestAnimationFrame(rita);
+</script>
+</body>
+</html>

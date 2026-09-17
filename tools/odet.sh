@@ -6,7 +6,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 U=$(tr -d '[:space:]' < .board-url)
-CMD="${ODET_CMD:-claude -p --model sonnet}"; INTERVALL="${ODET_INTERVALL:-150}"
+CMD="${ODET_CMD:-claude -p --model sonnet --strict-mcp-config --tools ""}"; INTERVALL="${ODET_INTERVALL:-150}"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 
 omgang() {

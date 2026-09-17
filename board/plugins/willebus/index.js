@@ -91,7 +91,55 @@ module.exports = {
     if (req.method === 'POST' && p === '/bj-ny') { const b = await this._body(req); this._bjNy(board, this._namn(b.spelare)); return this._json(res, 200, this.state); }
     if (req.method === 'POST' && p === '/bj-hit') { this._bjHit(board); return this._json(res, 200, this.state); }
     if (req.method === 'POST' && p === '/bj-stand') { const b = await this._body(req); this._bjStand(board, this._namn(b.spelare)); return this._json(res, 200, this.state); }
+    // Video poker (Jacks or Better): få fem kort, håll några, dra om resten.
+    if (req.method === 'POST' && p === '/poker-ny') { this._pokerNy(); return this._json(res, 200, this.state); }
+    if (req.method === 'POST' && p === '/poker-dra') { const b = await this._body(req); this._pokerDra(board, b.håll, this._namn(b.spelare)); return this._json(res, 200, this.state); }
     return false; // → 404
+  },
+
+  _nyLek() {
+    const lek = [];
+    for (const r of KORT_R) for (const s of KORT_S) lek.push(r + s);
+    for (let i = lek.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [lek[i], lek[j]] = [lek[j], lek[i]]; }
+    return lek;
+  },
+  _pokerNy() {
+    const lek = this._nyLek();
+    this.state.poker = { hand: lek.slice(0, 5), lek: lek.slice(5), status: 'dra', resultat: 'Håll korten du vill behålla och tryck Dra.', vinst: 0 };
+    this._spara();
+  },
+  _pokerDra(board, håll, spelare) {
+    const pk = this.state.poker;
+    if (!pk || pk.status !== 'dra') return;
+    const behåll = Array.isArray(håll) ? håll : [];
+    for (let i = 0; i < 5; i++) if (!behåll[i]) pk.hand[i] = pk.lek.pop();
+    const { namn, vinst } = this._pokerVärde(pk.hand);
+    pk.status = 'klar'; pk.resultat = vinst ? `${namn} — ${vinst} marker!` : `${namn}. Ingen vinst.`; pk.vinst = vinst;
+    if (vinst) this._registreraVinst(board, vinst, 'poker', spelare);
+    this._spara();
+  },
+  _pokerVärde(hand) {
+    const v = { A: 14, K: 13, Q: 12, J: 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
+    const värden = hand.map(k => v[k.slice(0, -1)]).sort((a, b) => a - b);
+    const färger = hand.map(k => k.slice(-1));
+    const antal = {}; värden.forEach(x => antal[x] = (antal[x] || 0) + 1);
+    const par = Object.values(antal).sort((a, b) => b - a);        // t.ex. [3,2]
+    const flush = färger.every(f => f === färger[0]);
+    const unika = [...new Set(värden)];
+    let straight = unika.length === 5 && (värden[4] - värden[0] === 4);
+    const wheel = unika.length === 5 && värden.join() === '2,3,4,5,14'; // A-2-3-4-5
+    if (wheel) straight = true;
+    const högstaPar = Number(Object.keys(antal).find(k => antal[k] >= 2) || 0);
+    if (straight && flush && värden[0] === 10) return { namn: 'ROYAL FLUSH', vinst: 500 };
+    if (straight && flush) return { namn: 'Straight flush', vinst: 300 };
+    if (par[0] === 4) return { namn: 'Fyrtal', vinst: 200 };
+    if (par[0] === 3 && par[1] === 2) return { namn: 'Kåk', vinst: 100 };
+    if (flush) return { namn: 'Flush', vinst: 70 };
+    if (straight) return { namn: 'Straight', vinst: 50 };
+    if (par[0] === 3) return { namn: 'Triss', vinst: 30 };
+    if (par[0] === 2 && par[1] === 2) return { namn: 'Två par', vinst: 20 };
+    if (par[0] === 2 && högstaPar >= 11) return { namn: 'Par (knekt+)', vinst: 10 };
+    return { namn: 'Inget', vinst: 0 };
   },
 
   _namn(v) { return (typeof v === 'string' && v.trim()) ? v.trim().slice(0, 24) : null; },
@@ -441,6 +489,7 @@ module.exports = {
       kasino: { jackpot: 100, snurr: 0, senaste: null, senasteVinst: 0, utbetalt: 0, meddelande: 'Snurra för att spela!' },
       rulett: { senasteNummer: null, senasteFärg: null, senasteVinst: 0, snurr: 0, meddelande: 'Satsa på en färg och snurra.' },
       bj: { spelarhand: [], givarhand: [], spelarVärde: 0, givarVärde: 0, status: 'väntar', resultat: '', vinst: 0 },
+      poker: { hand: [], lek: [], status: 'väntar', resultat: '', vinst: 0 },
       topp: [], spelare: {},
       platser, senaste: [], senasteHändelseTs: Date.now() };
   },

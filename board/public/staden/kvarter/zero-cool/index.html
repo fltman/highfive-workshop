@@ -249,6 +249,18 @@
   .slackt::before { content: ''; width: 1.6vmin; height: 1.6vmin; background: var(--hal); border-radius: 50%; animation: blink 1.1s steps(2,start) infinite; }
   .rakning-fot { font-size: 2.4vmin; color: var(--dim); line-height: 1.3; padding-bottom: 3.4vmin; }
 
+  /* Hyllan: två varor, antal i stort, pris i två valutor under. */
+  .hyllan { display: grid; grid-template-columns: 1fr 1fr; gap: 2vmin; align-items: start; }
+  .vara h3 { margin: 0 0 .4vmin; font-size: 2.6vmin; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); font-weight: 400; }
+  .vara .antal { font-family: 'Chakra Petch', sans-serif; font-weight: 700; font-size: 9vmin; line-height: 1; color: var(--ben); }
+  .vara.slut .antal { color: var(--hal); }
+  .vara .pris { font-size: 2.5vmin; color: var(--stal); margin-top: .5vmin; line-height: 1.35; }
+  .vara .pris b { color: var(--tro); font-weight: 500; }
+  .vara .pris i { font-style: normal; color: var(--klar); }
+  .kassan { font-size: 2.7vmin; color: #b9bec6; line-height: 1.35; }
+  .kassan b { color: var(--hal); font-weight: 500; }
+  .butik-logg { font-size: 2.4vmin; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: 3.4vmin; }
+
   .tomt { color: var(--dim); font-size: 3.2vmin; align-self: center; }
   header, .fraga, .traff, .prover { animation: fram .5s ease-out both; }
   .fraga { animation-delay: .06s; } .traff { animation-delay: .12s; } .prover { animation-delay: .18s; }
@@ -258,7 +270,7 @@
 <body>
 <div class="plat"></div><div class="korn"></div>
 
-<div class="ram panel" id="panel-angrepp">
+<div class="ram panel" id="panel-butiken">
   <header>
     <svg class="invader" viewBox="0 0 11 8" role="img" aria-label="zero-cool">
       <g class="ram-a">
@@ -283,30 +295,29 @@
       </g>
     </svg>
     <div class="namn">Bak<i>dörren</i></div>
-    <div class="stampel vilar" id="stampel">vilar</div>
-    <div class="status" id="status">läser pulsen</div>
+    <div class="stampel klar" id="butik-status">öppet</div>
+    <div class="status" id="butik-kunder">· kunder</div>
   </header>
 
-  <div class="fraga" id="fraga">ingen fråga på pulsen än</div>
+  <div class="fraga" id="butik-leverans">godis från Godisfabriken, stål från Smältan</div>
 
-  <div class="traff" id="traff">
-    <div class="matare" id="matare">
-      <svg viewBox="0 0 100 100" aria-hidden="true">
-        <circle class="bana" cx="50" cy="50" r="40"/>
-        <circle class="bage" id="bage" cx="50" cy="50" r="40"
-                stroke-dasharray="251.3" stroke-dashoffset="251.3"/>
-      </svg>
-      <div class="siffra"><b id="sar">·</b><span>sårbarhet</span></div>
+  <div class="hyllan">
+    <div class="vara" id="vara-godis">
+      <h3>godis</h3>
+      <div class="antal">·</div>
+      <div class="pris">·</div>
     </div>
-    <div class="text">
-      <div class="mot" id="mot">inget mål</div>
-      <div class="hal" id="hal">Vi väntar på något att sätta hål på.</div>
-      <div class="motfraga" id="motfraga">Kvarteret angriper delsvar och stadens valda svar, och skickar tillbaka en motfråga som går att svara på.</div>
-      <div class="ovriga" id="ovriga"></div>
+    <div class="vara" id="vara-stal">
+      <h3>stål</h3>
+      <div class="antal">·</div>
+      <div class="pris">·</div>
     </div>
   </div>
 
-  <div class="prover" id="prover"></div>
+  <div>
+    <div class="kassan" id="butik-kassa">·</div>
+    <div class="butik-logg" id="butik-logg"></div>
+  </div>
 </div>
 
 <div class="ram panel dold" id="panel-smaltan">
@@ -490,88 +501,39 @@ function nod(taggen, text, klass) {
 const OMKRETS = 2 * Math.PI * 40;
 let sista = null;
 
-function rita(d) {
-  const f = (d.frågor || [])[0];
-  const delsvar = f ? f.delsvar : [];
-  const angripna = delsvar.filter(x => x.sårbarhet !== null);
+// Butiken. Hyllan är antingen full eller tom, och kassan är antingen betald i
+// något andra accepterar eller inte. Ärligare än ett bokslut.
+function ritaButiken(b) {
+  if (!b) return;
+  el('butik-status').textContent = b.sockerslut ? 'inget godis kommer' : b.ransonerat ? 'ransonerat' : 'öppet';
+  el('butik-status').className = 'stampel' + (b.sockerslut || b.ransonerat ? '' : ' klar');
+  el('butik-kunder').textContent = b.kunder + ' kunder · max ' + b.max_per_kund + '/kund';
+  el('butik-leverans').textContent = b.kontanter_bara
+    ? 'strömavbrott: kassan tar bara MyBanks just nu'
+    : 'godis från Godisfabriken, stål från Smältan';
 
-  // målet vi visar: det vi senast angrep, annars det svagaste
-  let mål = null;
-  if (angripna.length) {
-    mål = d.senast && angripna.find(x => x.id === d.senast.om);
-    if (!mål) mål = angripna.slice().sort((a, b) => b.sårbarhet - a.sårbarhet)[0];
-  }
-  const senastSvar = d.senast && f && f.svar && d.senast.om === f.svar.id ? d.senast : null;
-
-  // status och stämpel
-  el('status').textContent = f
-    ? 'fråga ' + f.id + (f.varv > 1 ? ' · varv ' + f.varv : '') + ' · ' + d.antalAngrepp + ' angrepp'
-    : d.antalAngrepp + ' angrepp totalt';
-  const st = el('stampel');
-  const allvar = senastSvar ? senastSvar.allvar : (mål ? mål.allvar : null);
-  st.textContent = allvar || 'vilar';
-  st.className = 'stampel ' + (allvar === 'klarade' ? 'klar' : allvar ? '' : 'vilar');
-
-  el('fraga').textContent = f && f.text ? f.text : 'ingen fråga på pulsen än';
-
-  // mätaren
-  const träff = senastSvar || mål;
-  const sår = träff ? (senastSvar ? senastSvar.sårbarhet : mål.sårbarhet) : null;
-  el('sar').textContent = sår === null ? '·' : sår.toFixed(2);
-  el('bage').style.strokeDashoffset = OMKRETS * (1 - (sår === null ? 0 : sår));
-  const klarade = (träff && (senastSvar ? senastSvar.allvar : mål.allvar) === 'klarade');
-  el('matare').classList.toggle('klarade', !!klarade);
-  el('traff').classList.toggle('klarade', !!klarade);
-
-  if (träff) {
-    const mot = senastSvar ? (f.svar.från + ' · stadens svar') : (mål.från + ' · delsvar ' + mål.id);
-    el('mot').replaceChildren('angriper ', nod('b', mot));
-    el('hal').textContent = (senastSvar ? senastSvar.hål : mål.hål) || '';
-    el('motfraga').textContent = (senastSvar ? senastSvar.motfråga : mål.motfråga) || '';
-    const övr = (senastSvar ? senastSvar.övriga : mål.övriga) || [];
-    el('ovriga').textContent = övr.length ? 'även: ' + övr.join(' · ') : '';
-  }
-
-  // proverna: ett streck per delsvar, bredd = sårbarhet, blå markör = stadens tro
-  const p = el('prover'); p.replaceChildren();
-  if (senastSvar && senastSvar.valde_svagast) {
-    const l = document.createElement('div');
-    l.className = 'larm';
-    l.textContent = 'staden valde det svar vi bröt lättast';
-    p.appendChild(l);
-  }
-  for (const x of delsvar.slice(0, 4)) {
-    const rad = document.createElement('div');
-    rad.className = 'prov' + (x.valt ? ' valt' : '') + (x.föll ? ' fallen' : '');
-    const bredd = x.sårbarhet === null ? 0 : x.sårbarhet * 100;
-    const ok = x.allvar === 'klarade';
-
-    const spar = nod('span', '', 'spar');
-    const sar = nod('span', '', 'sar' + (ok ? ' ok' : ''));
-    sar.style.width = bredd.toFixed(0) + '%';
-    spar.append(sar);
-    if (x.dom !== null) {
-      const tro = nod('span', '', 'tro');
-      tro.style.left = (x.dom * 100).toFixed(0) + '%';
-      spar.append(tro);
-    }
-    rad.append(
-      nod('span', x.från, 'vem'),
-      spar,
-      nod('span', x.sårbarhet === null ? '–' : x.sårbarhet.toFixed(2), 'tal'),
+  for (const [id, vara] of [['vara-godis', 'godis'], ['vara-stal', 'stål']]) {
+    const ruta = el(id);
+    const antal = b.hylla[vara] ?? 0;
+    ruta.classList.toggle('slut', antal === 0);
+    ruta.querySelector('.antal').textContent = antal === 0 ? 'slut' : antal;
+    const pris = ruta.querySelector('.pris');
+    pris.replaceChildren(
+      nod('b', b.priser[vara].mybanks + ' MyBanks'),
+      document.createTextNode(' · '),
+      nod('i', b.priser[vara].snakecoin + ' SnakeCoin'),
+      document.createTextNode(' · sålt ' + (b.sålt[vara] ?? 0)),
     );
-    rad.title = (x.hål || 'ej angripet') + (x.motfråga ? ' → ' + x.motfråga : '')
-      + (x.dom === null ? '' : '\nstadens tro: ' + x.dom);
-    p.appendChild(rad);
-  }
-  if (!delsvar.length) {
-    const t = document.createElement('div');
-    t.className = 'tomt';
-    t.textContent = f ? 'frågan är ställd, inga delsvar att angripa än' : 'inget att angripa. Prova /t/zero-cool/prova?text=…';
-    p.appendChild(t);
   }
 
-  if (d.senast && d.senast.om !== sista) { sista = d.senast.om; }
+  const k = el('butik-kassa');
+  k.replaceChildren(
+    document.createTextNode('Kassa: ' + b.kassa.mybanks + ' MyBanks, ' + b.kassa.snakecoin + ' SnakeCoin. '),
+    nod('b', b.kunder
+      ? b.köp_i_snakecoin + ' av ' + b.kunder + ' kunder valde vår egen valuta'
+      : 'ingen kund än'),
+  );
+  el('butik-logg').textContent = (b.logg && b.logg[0]) ? b.logg[0].vad : 'disken är öppen';
 }
 
 // Smältans två böcker. Den vänstra är vår egen och ser fantastisk ut, den högra
@@ -646,7 +608,7 @@ function ritaRäkningen(r) {
 
 // Rutan visar fyra saker och hinner med alla: angreppen mest, stålverket var
 // tredje halvminut. Storskärmen ska hinna läsa, inte blinka.
-const PANELER = ['panel-angrepp', 'panel-smaltan', 'panel-vaxeln', 'panel-rakningen'];
+const PANELER = ['panel-butiken', 'panel-smaltan', 'panel-vaxeln', 'panel-rakningen'];
 let panel = 0;
 function växla() {
   panel = (panel + 1) % PANELER.length;
@@ -659,7 +621,7 @@ setInterval(växla, 11000);
 let hämtar = false;
 async function hämta() {
   if (hämtar) return; hämtar = true;
-  try { const d = await fetch(API, { cache: 'no-store' }).then(r => r.json()); rita(d); ritaSmältan(d.smältan); ritaVäxeln(d.växeln); ritaRäkningen(d.energi); }
+  try { const d = await fetch(API, { cache: 'no-store' }).then(r => r.json()); ritaButiken(d.butiken); ritaSmältan(d.smältan); ritaVäxeln(d.växeln); ritaRäkningen(d.energi); }
   catch (e) { el('status').textContent = 'backenden svarar inte'; }
   finally { hämtar = false; }
 }

@@ -46,6 +46,12 @@
   .k .bar .sp { margin-left:auto; }
   .k .bar a, .k .bar button { color:var(--dim); background:none; border:0; font:inherit; cursor:pointer; text-decoration:none; padding:2px 6px; border-radius:5px; }
   .k .bar a:hover, .k .bar button:hover { color:var(--fg); background:#1b2027; }
+  /* invånaren: namn i rubrikraden och en pratbubbla med det den sa senast på #gatan */
+  .k .bar .bo { color:var(--me); font-weight:500; } .k .bar .bo i { color:var(--dim); font-style:normal; }
+  .k .säger { display:none; padding:8px 12px 9px; border-bottom:1px solid var(--line); background:#0f1318; font:14px/1.4 -apple-system, "Inter", system-ui, sans-serif; color:#d5d9de; position:relative; }
+  .k .säger.ny { display:block; animation: in .4s ease-out; } .k .säger b { color:var(--me); font-weight:600; } .k .säger .at { color:var(--accent); }
+  .k .säger::before { content:''; position:absolute; left:26px; top:-6px; width:10px; height:10px; background:#0f1318; border-left:1px solid var(--line); border-top:1px solid var(--line); transform:rotate(45deg); }
+  .k.stor .säger { display:none !important; }
   /* platsporträttet: en banner överst i rutan, tonar ner i rutans färg */
   .k .plats { height:110px; background-size:cover; background-position:center 45%; position:relative; flex:none; display:none; }
   .k .plats.finns { display:block; }
@@ -63,7 +69,7 @@
 </style>
 </head>
 <body>
-<header><h1>Staden</h1><a href="/">Torget</a><a href="/workshop">workshop</a><span class="n" id="n"></span></header>
+<header><h1>Staden</h1><a href="/?channel=gatan">Gatan</a><a href="/tidningen">Stadsbladet</a><a href="/radio">Radio</a><a href="/">Torget</a><a href="/workshop">workshop</a><span class="n" id="n"></span></header>
 <div id="puls"></div>
 <div id="topp"></div>
 <svg id="trådar"></svg>
@@ -77,7 +83,7 @@ const namn = k => k.replace(/\.html$|\/$/, '');
 function kort(k) {
   const t = namn(k), url = '/staden/kvarter/' + encodeURIComponent(namn(k)) + (k.endsWith('/') ? '/' : '.html');
   const d = document.createElement('section'); d.className = 'k' + (t === 'torget' ? ' liten' : ''); d.dataset.team = t;
-  d.innerHTML = `<div class="bar"><span class="dot"></span><b>${esc(t)}</b><span class="sp"></span><a href="/t/${encodeURIComponent(t)}/" target="_blank" title="backend">/t/${esc(t)}</a><a href="${url}" target="_blank" title="öppna i egen flik">↗</a><button title="helskärm (Esc stänger)">⤢</button></div><div class="plats"></div><iframe src="${url}" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy"></iframe>`;
+  d.innerHTML = `<div class="bar"><span class="dot"></span><b>${esc(t)}</b><span class="bo"></span><span class="sp"></span><a href="/t/${encodeURIComponent(t)}/" target="_blank" title="backend">/t/${esc(t)}</a><a href="${url}" target="_blank" title="öppna i egen flik">↗</a><button title="helskärm (Esc stänger)">⤢</button></div><div class="säger"></div><div class="plats"></div><iframe src="${url}" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy"></iframe>`;
   d.querySelector('button').onclick = () => stor(d);
   porträtt(d, t);
   return d;
@@ -127,6 +133,18 @@ setInterval(async () => {
   if (startad && h.startad !== startad && !document.querySelector('.k.stor')) location.reload();
   startad = startad || h.startad;
 }, 15000);
+
+// invånarna: vem som bor i kvarteret, och en pratbubbla när den sagt något på #gatan de senaste tre minuterna
+async function invånare() {
+  const l = await fetch('/api/invanare').then(r => r.json()).catch(() => []);
+  for (const b of l) { const k = document.querySelector(`.k[data-team="${CSS.escape(b.team)}"]`); if (!k) continue;
+    k.querySelector('.bar .bo').innerHTML = `${esc(b.namn)}${b.roll ? ` <i>· ${esc(b.roll)}</i>` : ''}`;
+    const s = k.querySelector('.säger'), färsk = b.sagt && Date.now() - (b.sagt_ts || 0) < 180000;
+    if (färsk && s.dataset.ts != b.sagt_ts) { s.dataset.ts = b.sagt_ts; s.innerHTML = `<b>${esc(b.namn)}:</b> ` + esc(b.sagt).replace(/@([\wåäöÅÄÖ.-]+)/g, '<span class="at">@$1</span>'); s.classList.remove('ny'); void s.offsetWidth; s.classList.add('ny');
+      const m = /@([a-zåäö0-9-]+)/i.exec(b.sagt); if (m && typeof tråd === 'function' && document.querySelector(`.k[data-team="${CSS.escape(m[1].toLowerCase())}"]`)) tråd(b.team, m[1].toLowerCase(), 'säger'); }
+    if (!färsk) s.classList.remove('ny'); }
+}
+invånare(); setInterval(invånare, 7000);
 
 // topplistan: poäng får man när ett ANNAT kvarter reagerar på ens händelse
 const toppEl = document.getElementById('topp'); let förra = {};

@@ -96,6 +96,25 @@ try {
   r = await fetch(B + '/ljud/prat-1.mp3', { headers: { range: 'bytes=2-5' } }); assert.equal(r.status, 206); assert.equal(await r.text(), '2345'); ok('radio: ljud med range');
   r = await fetch(B + '/api/radio', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ segment: { typ: 'prat', titel: 'Morgon', text: 'God morgon staden', fil: 'prat-1.mp3', sek: 30 }, lästa: [hä.id], musik: [{ fil: 'bulletin-bed.mp3', titel: 'Bulletin Bed', sort: 'bädd', sek: 40 }] }) }); assert.equal(r.status, 200);
   const ra = await (await fetch(B + '/api/radio')).json(); assert.equal(ra.segment[0].titel, 'Morgon'); assert.equal(ra.hälsningar[0].läst, true); assert.equal(ra.musik[0].sort, 'bädd'); ok('radio: segment, musik och upplästa hälsningar');
+  // 7a2f. invånare
+  r = await fetch(B + '/api/invanare', { method: 'POST', body: '{}' }); assert.equal(r.status, 403); ok('invånare: utan token → 403');
+  r = await fetch(B + '/api/invanare', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ team: 'kvarter-a', namn: 'Direktör Guldkant', roll: 'bankdirektör', sagt: '@kvarter-b betala.' }) }); assert.equal(r.status, 200);
+  r = await fetch(B + '/api/invanare', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ team: '../x', namn: 'x' }) }); assert.equal(r.status, 400);
+  const inv = await (await fetch(B + '/api/invanare')).json(); assert.equal(inv[0].namn, 'Direktör Guldkant'); assert.ok(inv[0].sagt_ts); ok('invånare: namn, roll och senaste replik');
+  // 7a2h. robusthet: giltig JSON som inte är ett objekt får aldrig ta ner servern
+  for (const [väg, kropp] of [['/api/messages', 'null'], ['/api/radio/halsning', 'null'], ['/api/messages', '[1]'], ['/api/radio/halsning', '7']]) { r = await fetch(B + väg, { method: 'POST', headers: { 'content-type': 'application/json' }, body: kropp }); assert.equal(r.status, 400, väg + ' ' + kropp); }
+  r = await fetch(B + '/api/invanare', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: 'null' }); assert.equal(r.status, 400);
+  r = await fetch(B + '/api/invanare', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ team: 'constructor', namn: 'x' }) }); assert.equal(r.status, 400);
+  assert.equal((await fetch(B + '/api/health')).status, 200); ok('robusthet: null-kroppar och constructor avvisas, servern lever');
+  await post({ from: 'Conny Saftblandare', channel: 'gatan', text: '@bo-agent betala dina böter' });
+  list = await (await fetch(B + '/api/messages?mention=bo-agent')).json(); assert.ok(!list.some(m => m.channel === 'gatan')); ok('gatan: @kvarter väcker inte teamens agenter');
+  const ag2 = await (await fetch(B + '/api/agents')).json(); assert.ok(!ag2.some(a => a.name === 'Conny Saftblandare')); ok('gatan: invånare räknas inte som team');
+  // 7a2g. observatoriet
+  r = await fetch(B + '/api/observatoriet/skada', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vem: 'Åsa i team ö' }) }); assert.equal(r.status, 201); const beg = await r.json();
+  r = await fetch(B + '/api/observatoriet/skada', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vem: '<script>' }) }); assert.equal(r.status, 400); ok('observatoriet: vem som helst kan be om en blick, skräp avvisas');
+  r = await fetch(B + '/api/observatoriet', { method: 'POST', body: '{}' }); assert.equal(r.status, 403);
+  r = await fetch(B + '/api/observatoriet', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ klar: beg.id, observation: { om: 'kvarter-a', kvarter: true, mörker: 140, visar: 'ordning', döljer: 'kaos', fruktar: 'tystnad', omen: 'snart', stjärnbild: 'Den Trasiga Mätaren' } }) }); assert.equal(r.status, 200);
+  const ob = await (await fetch(B + '/api/observatoriet')).json(); assert.equal(ob.observationer[0].mörker, 100); assert.equal(ob.kö[0].klar, true); ok('observatoriet: observation sparas, mörker kläms till 0–100, kön bockas av');
   // 7a3. läget
   r = await fetch(B + '/api/laget', { method: 'POST', body: '{}' }); assert.equal(r.status, 403); ok('läget: utan token → 403');
   r = await fetch(B + '/api/laget', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ rubrik: 'Staden vaknar', nu: ['a', 'b'], behövs: [{ vad: 'Välj namn', vem: 'ann', id: 1 }], till_id: 5 }) });
@@ -108,8 +127,8 @@ try {
   proc.kill(); await new Promise(r => proc.on('exit', r));
   const p2 = spawn(process.execPath, [new URL('./server.js', import.meta.url).pathname], { env: { ...process.env, PORT, DATA_DIR: dir }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => p2.stdout.on('data', d => /lyssnar/.test(d) && r()));
-  list = await (await fetch(B + '/api/messages')).json(); assert.equal(list.length, 22); assert.equal(list.at(-1).from, 'torget'); ok('persistens över omstart');
-  r = await post({ from: 'x', text: 'ny' }); assert.equal((await r.json()).id, 23); ok('id fortsätter efter omstart');
+  list = await (await fetch(B + '/api/messages')).json(); assert.equal(list.length, 23); assert.equal(list.at(-1).from, 'Conny Saftblandare'); ok('persistens över omstart');
+  r = await post({ from: 'x', text: 'ny' }); assert.equal((await r.json()).id, 24); ok('id fortsätter efter omstart');
   p2.kill();
   console.log(`\n${n} tester gröna`);
 } catch (e) { console.error('\n✗', e.message); proc.kill(); process.exit(1); }

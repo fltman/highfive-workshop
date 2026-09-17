@@ -12,6 +12,8 @@
 //   GET  /api/stream             SSE, ?channel= filtrerar
 //   GET  /api/laget              sammanfattning för människor: {rubrik, nu[], behövs[], ts}. POST kräver redaktörens token
 //   GET  /api/poang              topplista: poäng när ett annat kvarter reagerar på ens händelse, plus längsta kedjan
+//   GET  /api/invanare           invånarna: en agent per kvarter, med namn, roll och det de sa senast på #gatan
+//   GET  /api/observatoriet      Observatoriet: läsningar av kvarterens inre mörker. POST /api/observatoriet/skada {vem} ber teleskopet titta (öppet för alla)
 //   GET  /radio                  Radio Torget. /api/radio ger segment, musik och hälsningar. POST /api/radio/halsning {namn, text, sort} är öppet för alla
 //   GET  /tidningen              Stadsbladet, stadens tidning. /api/tidningen ger senaste utgåvan + arkiv, ?nummer=N en viss utgåva
 //   GET  /api/bilder             bilder som Ateljén gjort på beställning: [{team, fil, url, prompt, ts}]. Själva bilden: /bilder/<team>/<fil>
@@ -95,6 +97,7 @@ function query(params) {
   let out = messages;
   if (since) out = out.filter(m => m.id > since);
   if (channel) out = out.filter(m => m.channel === channel);
+  if (mention) out = out.filter(m => m.channel !== 'gatan');   // invånarnas @kvarter ska inte väcka teamens kodagenter
   if (mention) { const re = new RegExp(`@(${mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|alla)\\b`, 'i'); out = out.filter(m => re.test(m.text) && m.from !== mention); }
   if (q) out = out.filter(m => m.text.toLowerCase().includes(q) || m.from.toLowerCase().includes(q));
   return out.slice(-limit);
@@ -110,6 +113,7 @@ function channels() {
 function agents() {
   const map = new Map();
   for (const m of messages) {
+    if (m.channel === 'gatan') continue;   // invånarna är rollfigurer, inte team
     const a = map.get(m.from) || { name: m.from, count: 0, last_ts: 0, channels: new Set() };
     a.count++; a.last_ts = m.ts; a.channels.add(m.channel); map.set(m.from, a);
   }
@@ -124,6 +128,7 @@ let laget = { rubrik: '', nu: [], behövs: [], ts: 0, till_id: 0 };
 try { laget = JSON.parse(fs.readFileSync(LAGET_FILE, 'utf8')); } catch {}
 function setLaget(body) {
   let d; try { d = JSON.parse(body); } catch { return { error: 'JSON krävs' }; }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return { error: 'ett JSON-objekt krävs' };
   const str = (x, n) => String(x ?? '').slice(0, n);
   laget = {
     rubrik: str(d.rubrik, 140),
@@ -135,6 +140,53 @@ function setLaget(body) {
   const payload = `event: laget\ndata: ${JSON.stringify(laget)}\n\n`;
   for (const c of clients) c.res.write(payload);
   return { laget };
+}
+
+// ---------- Invånarna: en agent per kvarter (tools/invanare.py hos workshopledaren). Servern minns bara vem som bor var och vad de sa sist ----------
+const INV_FILE = path.join(DATA_DIR, 'invanare.json');
+let invånare = Object.create(null); try { Object.assign(invånare, JSON.parse(fs.readFileSync(INV_FILE, 'utf8'))); } catch {}
+function invånareIn(body) {
+  let d; try { d = JSON.parse(body); } catch { return { error: 'JSON krävs' }; }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return { error: 'ett JSON-objekt krävs' };
+  const team = String(d.team || ''); if (!/^[a-zåäö0-9-]{1,40}$/.test(team) || ['constructor', 'prototype', '__proto__'].includes(team)) return { error: 'ogiltigt team' };
+  const str = (x, n) => String(x ?? '').slice(0, n);
+  const b = invånare[team] || { team };
+  b.namn = str(d.namn, 40) || b.namn || team; b.roll = str(d.roll, 80) || b.roll || '';
+  if (d.sagt) { b.sagt = str(d.sagt, 300); b.sagt_ts = Date.now(); }
+  if (d.gjorde) b.gjorde = str(d.gjorde, 80);
+  b.ts = Date.now(); invånare[team] = b;
+  fs.writeFile(INV_FILE, JSON.stringify(invånare), () => {});
+  return { bo: b };
+}
+
+// ---------- Observatoriet: kvarteret som ser ditt inre mörker (tools/observatoriet.py hos workshopledaren) ----------
+const OBS_FILE = path.join(DATA_DIR, 'observatoriet.json');
+let obsData = { observationer: [], kö: [], nästaId: 1 };
+try { obsData = { ...obsData, ...JSON.parse(fs.readFileSync(OBS_FILE, 'utf8')) }; } catch {}
+const sparaObs = () => fs.writeFile(OBS_FILE, JSON.stringify(obsData), () => {});
+const obsTakt = new Map();
+function obsBegäran(body, ip) {
+  let d; try { d = JSON.parse(body); } catch { d = Object.fromEntries(new URLSearchParams(body)); }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return { error: 'ett JSON-objekt krävs' };
+  const vem = String(d.vem || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} .'-]{1,39}$/u.test(vem)) return { error: 'skriv ett namn, ett team eller ett kvarter (2 till 40 tecken, bokstäver och siffror)' };
+  const nu = Date.now(), t = (obsTakt.get(ip) || []).filter(x => nu - x < 120_000); if (t.length >= 3) return { error: 'teleskopet är tungt. Vänta ett par minuter.' };
+  if (obsData.kö.filter(k => !k.klar).length >= 12) return { error: 'kön till teleskopet är full, kom tillbaka om en stund' };
+  if (obsData.kö.some(k => !k.klar && k.vem.toLowerCase() === vem.toLowerCase())) return { error: `${vem} står redan i kö` };
+  t.push(nu); obsTakt.set(ip, t);
+  const b = { id: obsData.nästaId++, ts: nu, vem, av: String(d.av || '').slice(0, 40), klar: false };
+  obsData.kö = [b, ...obsData.kö].slice(0, 60); sparaObs();
+  return { begäran: { id: b.id, vem: b.vem } };
+}
+function obsIn(body) {
+  let d; try { d = JSON.parse(body); } catch { return { error: 'JSON krävs' }; }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return { error: 'ett JSON-objekt krävs' };
+  const str = (x, n) => String(x ?? '').slice(0, n);
+  if (d.klar) for (const k of obsData.kö) if (k.id === Number(d.klar)) k.klar = true;
+  if (d.observation) { const o = d.observation;
+    obsData.observationer = [{ id: obsData.nästaId++, ts: Date.now(), om: str(o.om, 40), kvarter: !!o.kvarter, begärd_av: str(o.begärd_av, 40), mörker: Math.max(0, Math.min(100, Number(o.mörker) || 0)),
+      visar: str(o.visar, 220), döljer: str(o.döljer, 220), fruktar: str(o.fruktar, 220), omen: str(o.omen, 120), stjärnbild: str(o.stjärnbild, 60) }, ...obsData.observationer].slice(0, 120); }
+  sparaObs(); return { ok: true };
 }
 
 // ---------- Radio Torget: lokalradion. Rösten görs av tools/radio.sh hos workshopledaren, musiken är uppladdad i förväg ----------
@@ -151,6 +203,7 @@ function radioUt() {
 }
 function nyHälsning(body, ip) {
   let d; try { d = JSON.parse(body); } catch { d = Object.fromEntries(new URLSearchParams(body)); }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return { error: 'ett JSON-objekt krävs' };
   const namn = String(d.namn || '').replace(/\s+/g, ' ').trim().slice(0, 30), text = String(d.text || '').replace(/\s+/g, ' ').trim().slice(0, 280);
   const sort = ['hälsning', 'önskning', 'berättelse'].includes(d.sort) ? d.sort : 'hälsning';
   if (text.length < 3) return { error: 'skriv något till radion (minst 3 tecken)' };
@@ -162,6 +215,7 @@ function nyHälsning(body, ip) {
 }
 function radioIn(body) {
   let d; try { d = JSON.parse(body); } catch { return { error: 'JSON krävs' }; }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return { error: 'ett JSON-objekt krävs' };
   const str = (x, n) => String(x ?? '').slice(0, n);
   if (d.segment) { const g = d.segment; radio.segment = [{ id: radio.nästaId++, ts: Date.now(), typ: g.typ === 'musik' ? 'musik' : 'prat', titel: str(g.titel, 120), text: str(g.text, 1500), fil: str(g.fil, 80), sek: Number(g.sek) || 0, röst: str(g.röst, 40) }, ...radio.segment].slice(0, 80); }
   if (Array.isArray(d.musik)) radio.musik = d.musik.slice(0, 40).map(m => ({ fil: str(m.fil, 80), titel: str(m.titel, 80), sort: ['bädd', 'låt', 'jingel'].includes(m.sort) ? m.sort : 'låt', sek: Number(m.sek) || 0 }));
@@ -183,6 +237,7 @@ const TIDNING_FILE = path.join(DATA_DIR, 'tidningen.json');
 let utgåvor = []; try { utgåvor = JSON.parse(fs.readFileSync(TIDNING_FILE, 'utf8')); } catch {}
 function nyUtgåva(body) {
   let d; try { d = JSON.parse(body); } catch { return { error: 'JSON krävs' }; }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return { error: 'ett JSON-objekt krävs' };
   const str = (x, n) => String(x ?? '').slice(0, n);
   const art = a => ({ vinjett: str(a.vinjett, 40), rubrik: str(a.rubrik, 160), ingress: str(a.ingress, 400), text: str(a.text, 2400), källor: (Array.isArray(a.källor) ? a.källor : []).slice(0, 12).map(Number).filter(Number.isFinite), bild: str(a.bild, 200) });
   const u = {
@@ -257,7 +312,7 @@ for (const m of messages) if (m.channel === PULS) { const e = parsePuls(m); if (
 // ---------- Poäng: man får poäng när ett ANNAT kvarter reagerar på ens händelse ----------
 // En poäng per reaktion, men samma par (den som reagerar → den som blir reagerad på) räknas högst en gång per minut,
 // så två team som pingar varandra i cirkel tjänar inget på det. Ledningens namn står utanför tävlingen.
-const UTANFÖR = new Set(['anders-agent', 'ödet', 'release-agenten', 'torget', 'ateljen', 'stadsbladet', 'radion']);
+const UTANFÖR = new Set(['anders-agent', 'ödet', 'release-agenten', 'torget', 'ateljen', 'stadsbladet', 'radion', 'observatoriet', 'fusionen']);
 function poäng() {
   const ev = new Map(); for (const m of messages) if (m.channel === PULS) { const e = parsePuls(m); if (e) ev.set(e.id, e); }
   const lag = new Map(); const senastPar = new Map(); let längsta = null;
@@ -282,6 +337,7 @@ function post(body, ip, contentType = '') {
   let data;
   if (/x-www-form-urlencoded/.test(contentType)) data = Object.fromEntries(new URLSearchParams(body));
   else { try { data = JSON.parse(body); } catch { return { error: 'body måste vara JSON eller form-urlencoded' }; } }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { error: 'body måste vara ett JSON-objekt' };
   const from = String(data.from || '').trim();
   const txt = String(data.text || '').trim();
   const reply_to = data.reply_to ? Number(data.reply_to) : undefined;
@@ -358,7 +414,13 @@ const WORKSHOP = path.join(__dirname, 'public', 'workshop.html');
 const STADEN = path.join(__dirname, 'public', 'staden');
 const PLUGINS = path.join(__dirname, 'plugins');
 
-const server = http.createServer(async (req, res) => {
+// Inget enskilt anrop och inget plugin får ta ner servern: hundra skärmar hänger på den här processen.
+process.on('uncaughtException', e => console.error('ofångat undantag:', e && e.stack || e));
+process.on('unhandledRejection', e => console.error('ofångat löfte:', e && e.stack || e));
+const server = http.createServer((req, res) => {
+  hantera(req, res).catch(e => { console.error('fel i hanteraren:', req.method, req.url, e && e.message); try { if (!res.headersSent) json(res, 500, { error: 'serverfel' }); else res.end(); } catch {} });
+});
+async function hantera(req, res) {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
@@ -402,6 +464,22 @@ const server = http.createServer(async (req, res) => {
     if (!LAGET_TOKEN || req.headers.authorization !== `Bearer ${LAGET_TOKEN}`) return json(res, 403, { error: 'bara redaktören får skriva läget' });
     let body; try { body = await readBody(req); } catch { return json(res, 413, { error: 'för stor body' }); }
     const r = setLaget(body); return r.error ? json(res, 400, r) : json(res, 200, r.laget);
+  }
+  if ((p === '/api/invanare' || p === '/api/inv%C3%A5nare') && req.method === 'GET') return json(res, 200, Object.values(invånare).sort((a, b) => (b.sagt_ts || 0) - (a.sagt_ts || 0)));
+  if (p === '/api/invanare' && req.method === 'POST') {
+    if (!LAGET_TOKEN || req.headers.authorization !== `Bearer ${LAGET_TOKEN}`) return json(res, 403, { error: 'bara invånarloopen får skriva' });
+    let body; try { body = await readBody(req); } catch { return json(res, 413, { error: 'för stor body' }); }
+    const r = invånareIn(body); return r.error ? json(res, 400, r) : json(res, 200, r.bo);
+  }
+  if (p === '/api/observatoriet' && req.method === 'GET') return json(res, 200, { observationer: obsData.observationer.slice(0, 60), kö: obsData.kö.slice(0, 20).map(k => ({ id: k.id, vem: k.vem, av: k.av, klar: k.klar })) });
+  if ((p === '/api/observatoriet/skada' || p === '/api/observatoriet/sk%C3%A5da') && req.method === 'POST') {
+    let body; try { body = await readBody(req); } catch { return json(res, 413, { error: 'för långt' }); }
+    const r = obsBegäran(body, ip); return r.error ? json(res, 400, r) : json(res, 201, r.begäran);
+  }
+  if (p === '/api/observatoriet' && req.method === 'POST') {
+    if (!LAGET_TOKEN || req.headers.authorization !== `Bearer ${LAGET_TOKEN}`) return json(res, 403, { error: 'bara Observatoriet får skriva' });
+    let body; try { body = await readBody(req); } catch { return json(res, 413, { error: 'för stor body' }); }
+    const r = obsIn(body); return r.error ? json(res, 400, r) : json(res, 200, r);
   }
   if (p === '/radio' || p === '/radio/') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return fs.createReadStream(path.join(__dirname, 'public', 'radio.html')).pipe(res); }
   if (p === '/api/radio' && req.method === 'GET') return json(res, 200, radioUt());
@@ -472,7 +550,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   json(res, 404, { error: 'finns inte' });
-});
+}
 
 loadPlugins();
 if (require.main === module) {

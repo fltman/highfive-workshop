@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Fusionsreaktorn</title>
+<style>
+  :root { --bg:#060a0d; --panel:#0d1418; --line:#16242b; --fg:#e4edf0; --dim:#6d828b; --cy:#5ce1ff; --accent:#ffb454; --röd:#ff5f56; }
+  * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 -apple-system, "Inter", system-ui, sans-serif; padding:12px 14px; }
+  .t { display:flex; align-items:baseline; gap:10px; } .t b { font:800 15px ui-monospace, Menlo, monospace; letter-spacing:.12em; color:var(--cy); } .t span { color:var(--dim); font-size:12px; } #st { margin-left:auto; font:700 11px ui-monospace, Menlo, monospace; letter-spacing:.12em; padding:3px 9px; border-radius:999px; border:1px solid var(--line); }
+  #st.brinner { color:#06120f; background:var(--cy); border-color:var(--cy); } #st.instabil { color:#1a0500; background:var(--accent); animation:bl .5s infinite; } #st.släckt, #st.kall { color:var(--dim); } @keyframes bl { 50% { opacity:.4; } }
+  .rad { display:grid; grid-template-columns:150px 1fr; gap:14px; align-items:center; margin:10px 0 8px; } canvas { width:150px; height:150px; display:block; }
+  .fri { font:800 26px/1.05 ui-monospace, Menlo, monospace; color:var(--cy); } .fri small { display:block; font:400 12px/1.4 -apple-system, sans-serif; color:var(--dim); margin-top:4px; }
+  .m { margin-top:9px; } .m i { display:flex; justify-content:space-between; font:11px ui-monospace, Menlo, monospace; color:var(--dim); font-style:normal; letter-spacing:.06em; text-transform:uppercase; } .m div { height:7px; background:#0e1a20; border-radius:4px; overflow:hidden; margin-top:3px; } .m div u { display:block; height:100%; background:var(--cy); transition:width .8s; } .m.låg div u { background:var(--röd); }
+  .kn { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:10px 0; } button { background:transparent; color:var(--cy); border:1px solid var(--cy); border-radius:9px; padding:9px 4px; font-weight:700; cursor:pointer; font-size:13px; } button:hover { background:rgba(92,225,255,.1); } button.tänd { background:var(--cy); color:#03141a; }
+  #fel { min-height:16px; font-size:12px; color:var(--accent); } #logg { border-top:1px solid var(--line); margin-top:6px; padding-top:6px; } #logg div { font-size:13px; color:#b9c8cd; padding:3px 0; } #logg time { color:var(--dim); font:11px ui-monospace, Menlo, monospace; margin-right:6px; }
+</style></head><body>
+<div class="t"><b>FUSIONSREAKTORN</b><span>fri el åt alla, så länge plasmat håller</span><span id="st">KALL</span></div>
+<div class="rad"><canvas id="c" width="300" height="300"></canvas><div><div class="fri" id="mw">0 MW<small>Elen kostar som vanligt.</small></div>
+  <div class="m" id="mb"><i><span>Deuterium</span><span id="vb"></span></i><div><u></u></div></div><div class="m" id="mi"><i><span>Inneslutning</span><span id="vi"></span></i><div><u></u></div></div></div></div>
+<div class="kn"><button class="tänd" data-r="tand">Tänd plasmat</button><button data-r="bransle">Mata bränsle</button><button data-r="kyl">Kyl magneterna</button></div><div id="fel"></div><div id="logg"></div>
+<script>
+const c = document.getElementById('c'), x = c.getContext('2d'); let s = { status: 'kall', temperatur: 0, inneslutning: 100, bränsle: 0, megawatt: 0, logg: [] };
+const esc = t => String(t ?? '').replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]));
+function rita(t) { x.clearRect(0, 0, 300, 300); const på = s.status === 'brinner' || s.status === 'instabil', k = på ? s.inneslutning / 100 : 0, skak = s.status === 'instabil' ? (Math.random() - .5) * 6 : 0;
+  x.save(); x.translate(150 + skak, 150 + skak);
+  for (let i = 0; i < 6; i++) { x.strokeStyle = `rgba(60,90,100,${.25 + i * .05})`; x.lineWidth = 2; x.beginPath(); x.ellipse(0, 0, 120 - i * 3, 46 - i * 2, 0, 0, 7); x.stroke(); }
+  if (på) for (let i = 0; i < 70; i++) { const a = i / 70 * 6.283 + t / (500 - 300 * k), r = 96 + Math.sin(t / 130 + i) * 6 * (2 - k), y = Math.sin(a) * 36, z = Math.cos(a); x.fillStyle = `rgba(${s.status === 'instabil' ? '255,180,84' : '92,225,255'},${(.35 + .5 * (z + 1) / 2) * (.5 + .5 * k)})`; x.beginPath(); x.arc(Math.cos(a) * r, y, 2.2 + 2.4 * (z + 1) / 2, 0, 7); x.fill(); }
+  const g = x.createRadialGradient(0, 0, 0, 0, 0, 60); g.addColorStop(0, på ? `rgba(200,250,255,${.25 + .5 * k})` : 'rgba(40,60,70,.2)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.beginPath(); x.arc(0, 0, 60, 0, 7); x.fill(); x.restore(); requestAnimationFrame(rita); }
+function visa() { const st = document.getElementById('st'); st.textContent = s.status.toUpperCase(); st.className = s.status; const på = s.status === 'brinner' || s.status === 'instabil';
+  document.getElementById('mw').innerHTML = `${s.megawatt} MW<small>${på ? 'FRI EL ÅT ALLA. ' + Math.round(s.temperatur) + ' miljoner grader. Levererat ' + Math.round(s.levererat || 0) + ' MWh.' : s.status === 'släckt' ? 'Plasmat slocknade. Elen kostar igen.' : 'Reaktorn är kall. Elen kostar som vanligt.'}</small>`;
+  for (const [id, v, val] of [['mb', 'vb', s.bränsle], ['mi', 'vi', s.inneslutning]]) { document.getElementById(v).textContent = Math.round(val) + ' %'; const m = document.getElementById(id); m.querySelector('u').style.width = val + '%'; m.classList.toggle('låg', val < 25); }
+  document.getElementById('logg').innerHTML = (s.logg || []).slice(0, 5).map(l => `<div><time>${new Date(l.ts).toTimeString().slice(0,5)}</time>${esc(l.text)}</div>`).join(''); }
+async function hämta() { const d = await fetch('/t/fusionen/').then(r => r.json()).catch(() => null); if (d) { s = d; visa(); } }
+for (const b of document.querySelectorAll('button')) b.onclick = async () => { const r = await fetch('/t/fusionen/' + b.dataset.r, { method: 'POST' }); const d = await r.json().catch(() => ({})); document.getElementById('fel').textContent = d.fel || ''; if (d.status) { s = d; visa(); } };
+hämta(); setInterval(hämta, 4000); requestAnimationFrame(rita);
+</script></body></html>

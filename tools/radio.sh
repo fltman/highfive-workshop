@@ -14,7 +14,7 @@ ROST="${RADIO_ROST:-6MuG7W2I4HAxP8rwUO6Z}"; ROSTNAMN="${RADIO_ROSTNAMN:-Bengt}";
 GOLV="${RADIO_GOLV:-9000}"; MAXT="${RADIO_MAX_TECKEN:-520}"; INTERVALL="${RADIO_INTERVALL:-300}"
 BUDGET="${RADIO_BUDGET:-22000}"   # egen bokföring: så här många tecken får radion läsa totalt. Kontots räknare släpar flera minuter, så vi litar inte bara på den.
 BOK=.radio-tecken; [ -s "$BOK" ] || echo 0 > "$BOK"
-CMD="${RADIO_CMD:-claude -p --model sonnet}"
+CMD="${RADIO_CMD:-claude -p --model sonnet --strict-mcp-config --tools ""}"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; STATE=.radio-state; [ -s "$STATE" ] || echo 0 > "$STATE"
 kvar() { curl -s -H "xi-api-key: $XI" https://api.elevenlabs.io/v1/user/subscription | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['character_limit']-d['character_count'])" 2>/dev/null || echo 0; }
 
