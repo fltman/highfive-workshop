@@ -1,44 +1,39 @@
 // Team willebus — kvarteret "Genomfarten". Polisen och jakten som rör sig genom staden.
 //
-// Berättelse på #staden-puls: en biljakt är en aktör som ägs av ETT kvarter i taget
-// och lämnas över när den korsar en gräns.
+// Berättelse 3 på Stadens puls (PROJEKT.md): en kupp höjer wanted-nivån, och en jakt
+// är ett objekt som ägs av ETT kvarter i taget och lämnas över när den korsar en gräns.
+// Först till kvarn tar emot. Tar ingen emot svalnar den där den står, ett steg per minut.
 //
-//   POSTAR:  kupp         {typ:'kupp',        nyttolast:{wanted, plats}}
-//            överlämning  {typ:'överlämning', nyttolast:{vad:'jakt', wanted, förare}, orsak, djup}
-//   LYSSNAR: överlämning  → först som svarar tar emot jakten (först-till-kvarn)
-//            fråga        → en het fråga i stan drar ut mer polis (synlig reaktion på främmande händelse)
+//   POSTAR (board.emit):  kupp         {wanted, plats}
+//                         överlämning  {vad:'jakt', wanted, förare}   (orsak = händelsen vi svarar på)
+//   LYSSNAR (onEvent):    överlämning  → först lediga kvarter tar emot jakten
+//                         fråga        → en het fråga i stan drar ut mer polis (synlig reaktion på annan berättelse)
 //
-// Kontrakt (spikat i brainstormen): kanal staden-puls, format {typ, från, nyttolast, orsak, djup},
-// inläggs-id är klockan, ekospärr djup max 4 och högst ~6 händelser per kvarter och minut,
-// wanted svalnar 1 steg per minut utan händelse.
+// Servern håller ekospärren (kedjedjup max 4, en reaktion per orsak, max 6/min) och fyller i
+// från och djup. Vi behöver inte: board.emit returnerar {error} när kedjan är slut, och då
+// stannar jakten hos oss och svalnar.
 
 const fs = require('fs');
 const path = require('path');
 
-const KANAL = 'staden-puls';
-const MAX_DJUP = 4;
-const TAK_PER_MIN = 6;          // ekospärr: högst så här många postningar per minut
 const WANTED_MAX = 5;
 const SVALNAR_MS = 60 * 1000;   // wanted −1 per minut utan händelse
 const OVERLAMNING_MS = 8000;    // hur länge jakten stannar hos oss innan den skickas vidare
-
 const förare = ['Röda Sköden', 'Bagarn', 'Loff', 'Tvillingen', 'Doris 78', 'Kajan'];
 
 module.exports = {
   init(ctx) {
     this.ctx = ctx;
     this.filväg = ctx.dataDir ? path.join(ctx.dataDir, 'state.json') : null;
-    this.senastePostat = [];     // tidsstämplar för takt-spärren
     this.state = this._läs();
   },
 
-  async handle(req, res, { path: p, team, board }) {
-    // GET /t/willebus/state → allt fronten behöver för att rita kvarteret
+  async handle(req, res, { path: p, board }) {
     if (req.method === 'GET' && (p === '/state' || p === '/')) {
       this._svalna();
       return this._json(res, 200, this.state);
     }
-    // POST /t/willebus/kupp → en kupp startar en jakt som ger sig ut i staden
+    // En kupp startar en jakt som ger sig ut i staden
     if (req.method === 'POST' && p === '/kupp') {
       const wanted = 1 + Math.floor(Math.random() * 3);
       const namn = förare[Math.floor(Math.random() * förare.length)];
@@ -46,79 +41,58 @@ module.exports = {
       this.state.harJakt = true;
       this.state.förare = namn;
       this._logga('kupp', `Kupp på Genomfarten! ${namn} flyr, wanted ${this.state.wanted}★`);
-      this._posta(board, team, { typ: 'kupp', nyttolast: { wanted: this.state.wanted, plats: 'Genomfarten' } });
-      this._planeraÖverlämning(board, team, null);
+      const r = board.emit('kupp', { wanted: this.state.wanted, plats: 'Genomfarten' });
+      const orsak = r && r.message ? r.message.id : undefined;
+      this._planeraÖverlämning(board, orsak);
       this._spara();
       return this._json(res, 200, this.state);
     }
     return false; // → 404
   },
 
-  onMessage(m, { team, board }) {
-    if (m.from === team) return;          // svara inte dig själv
-    if (m.channel !== KANAL) return;
-
-    let ev;
-    try { ev = JSON.parse(m.text); } catch { return; }   // bara riktiga pulshändelser
-    if (!ev || typeof ev !== 'object') return;
-    const djup = Number(ev.djup) || 0;
-
-    // Tar emot en pågående jakt — först som svarar vinner den (vi tar den bara om vi är lediga)
-    if (ev.typ === 'överlämning' && ev.nyttolast && ev.nyttolast.vad === 'jakt') {
-      if (this.state.harJakt) return;     // upptagen: låt någon annan ta den
-      if (djup >= MAX_DJUP) {             // ekospärr: kedjan är slut, jakten svalnar här
-        this._logga('slut', `Jakten på ${ev.nyttolast.förare || 'okänd'} ebbade ut på Genomfarten.`);
-        this._spara();
-        return;
-      }
+  // Varje händelse från ett ANNAT kvarter på #staden-puls
+  onEvent(e, { board }) {
+    // Tar emot en pågående jakt — bara om vi är lediga (först till kvarn)
+    if (e.typ === 'överlämning' && e.nyttolast && e.nyttolast.vad === 'jakt') {
+      if (this.state.harJakt) return;                 // upptagen: låt någon annan ta den
       this.state.harJakt = true;
-      this.state.wanted = Math.min(WANTED_MAX, Number(ev.nyttolast.wanted) || 1);
-      this.state.förare = ev.nyttolast.förare || 'okänd';
-      this._logga('in', `Jakten på ${this.state.förare} kom in från @${m.from} (wanted ${this.state.wanted}★).`);
-      this._planeraÖverlämning(board, team, m.id, djup);
+      this.state.wanted = Math.min(WANTED_MAX, Number(e.nyttolast.wanted) || 1);
+      this.state.förare = e.nyttolast.förare || 'okänd';
+      this._logga('in', `Jakten på ${this.state.förare} kom in från @${e.från} (wanted ${this.state.wanted}★).`);
+      this._planeraÖverlämning(board, e.id);          // orsak = händelsen vi reagerar på
       this._spara();
       return;
     }
-
-    // Synlig reaktion på en främmande händelse: en het fråga i stan drar ut mer polis
-    if (ev.typ === 'fråga') {
+    // Synlig reaktion på en annan berättelse: en het fråga drar ut mer polis
+    if (e.typ === 'fråga') {
       this.state.poliserUte = Math.min(9, (this.state.poliserUte || 0) + 1);
-      this._logga('patrull', `Het fråga från @${m.from} — fler polispatruller ut på Genomfarten.`);
+      this._logga('patrull', `Het fråga från @${e.från} — fler polispatruller ut på Genomfarten.`);
       this._spara();
     }
   },
 
-  // Skicka jakten vidare efter en stund, om vi fortfarande har den
-  _planeraÖverlämning(board, team, orsak, djup = 0) {
+  // Skicka jakten vidare efter en stund. Nekar ekospärren (kedjan slut) stannar den och svalnar.
+  _planeraÖverlämning(board, orsak) {
     setTimeout(() => {
       try {
         if (!this.state.harJakt) return;
-        const nyttDjup = djup + 1;
-        if (nyttDjup >= MAX_DJUP || this.state.wanted <= 0) {
+        if (this.state.wanted <= 0) {
           this._logga('gripen', `${this.state.förare} greps på Genomfarten. Wanted nollas.`);
           this.state.harJakt = false;
-          this.state.wanted = 0;
           this._spara();
           return;
         }
-        const nyttolast = { vad: 'jakt', wanted: this.state.wanted, förare: this.state.förare };
-        if (this._posta(board, team, { typ: 'överlämning', nyttolast, orsak, djup: nyttDjup })) {
-          this._logga('ut', `Jakten på ${this.state.förare} lämnade Genomfarten (djup ${nyttDjup}).`);
+        const r = board.emit('överlämning', { vad: 'jakt', wanted: this.state.wanted, förare: this.state.förare }, orsak);
+        if (r && r.message) {
+          let djup = '?'; try { djup = JSON.parse(r.message.text).djup; } catch { /* ok */ }
+          this._logga('ut', `Jakten på ${this.state.förare} lämnade Genomfarten (djup ${djup}).`);
           this.state.harJakt = false;
-          this._spara();
+        } else {
+          this._logga('slut', `Kedjan är slut — jakten på ${this.state.förare} svalnar på Genomfarten.`);
         }
+        this._spara();
       } catch (e) { /* ett plugin som kastar ska inte ta ner servern */ }
     }, OVERLAMNING_MS);
-  },
-
-  // En postning med takt-spärr. Returnerar false om vi slår i taket.
-  _posta(board, team, obj) {
-    const nu = Date.now();
-    this.senastePostat = this.senastePostat.filter((t) => nu - t < 60000);
-    if (this.senastePostat.length >= TAK_PER_MIN) return false;
-    this.senastePostat.push(nu);
-    board.post(JSON.stringify({ från: team, ...obj }), KANAL);
-    return true;
   },
 
   _svalna() {
