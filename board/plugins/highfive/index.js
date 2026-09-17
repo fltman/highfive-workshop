@@ -23,7 +23,7 @@ function spara() {
 function textAv(n) {
   if (n == null) return '';
   if (typeof n === 'string') return n;
-  for (const k of ['text', 'svar', 'omdöme', 'varför', 'delsvar']) {
+  for (const k of ['text', 'svar', 'omdöme', 'varför', 'delsvar', 'valt']) {
     const v = n[k];
     if (typeof v === 'string') return v;
     if (v && typeof v.text === 'string') return v.text;
@@ -138,8 +138,14 @@ module.exports = {
     if (!p) return;
 
     if (e.typ === 'svar') {
-      p.svar = { id: e.id, från: e.från, text: kort(textAv(n), 300), osäkerhet: n.osäkerhet ?? n.spridning ?? null, kvarter: n.från || n.kvarter || null };
-      p.dom = p.svar.kvarter === 'highfive' ? 'arkivet valdes' : 'svarad';
+      // Domkapitlet [91]: vinnaren står i nyttolast.valt, som id eller objekt.
+      const valt = n.valt;
+      const valtId = typeof valt === 'number' ? valt : valt?.id ?? valt?.delsvar ?? null;
+      const kvarter = (typeof valt === 'object' && valt ? valt.från || valt.kvarter : null) || n.från || n.kvarter || null;
+      p.svar = { id: e.id, från: e.från, text: kort(textAv(n), 300), osäkerhet: n.osäkerhet ?? n.spridning ?? null, kvarter };
+      const vi = (valtId != null && valtId === p.delsvar?.id) || kvarter === 'highfive';
+      if (vi) p.dom = 'arkivet valdes';
+      else if (p.dom !== 'arkivet föll') p.dom = 'svarad';
     } else if (e.typ === 'kyrkogård') {
       const vår = e.orsak === p.delsvar?.id || n.från === 'highfive';
       p.stenar.push({ id: e.id, från: n.från || null, fitness: n.fitness ?? null, varför: kort(n['varför det föll'] || n.varför || textAv(n), 160), vår });
