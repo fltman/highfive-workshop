@@ -50,6 +50,10 @@
 // är precis 6, och med en lägre siffra fick angreppet på svaret vänta en minut i
 // provkörningen — alltså landade larmet långt efter att storskärmen gått vidare.
 // Serverns 400 är vårt skyddsnät, och ett avvisat angrepp ställs tillbaka i kön.
+// Smältan: stålverket som bara tar betalt i SnakeCoins. Den räknar på händelser
+// vi ändå tar emot och postar ingenting — utställning, inte verksamhet.
+const stålverket = require('./stalverket.js');
+
 const TAK_PER_MINUT = 6;
 const MAX_FRÅGOR = 12;
 const MAX_KÖ = 12;
@@ -304,6 +308,10 @@ function ta(e, tyst, board) {
   if (!e || !e.typ) return;
   const n = e.nyttolast || {};
 
+  // Stålverket räknar bara på det som händer nu. Vid uppstart spelar vi inte om
+  // historiken i det, annars smälter det tusen ton på en sekund.
+  if (!tyst) { try { stålverket.händelse(e); } catch (fel) { console.error('[zero-cool] smältan:', fel.message); } }
+
   if (e.typ === 'fråga') {
     if (state.frågor.has(e.id)) return;
     state.frågor.set(e.id, {
@@ -434,6 +442,7 @@ module.exports = {
         träffar: state.träffar,
         kyrkogård: state.kyrkogård.slice(0, 5),
         senast: state.senast,
+        smältan: stålverket.tillstånd(),
         frågor,
       }));
       return true;
