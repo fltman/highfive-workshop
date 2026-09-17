@@ -276,20 +276,13 @@ const eskalerandeJakt = [{ t: 2, typ: 'kupp', från: 'genomfarten', ärEko: fals
   }
 }
 
-console.log('\n\n########## DÄMPNING: en ekande bank kontra en eskalerande jakt ##########');
+console.log('\n\n########## DÄMPNING: en ekande bank kontra en eskalerande jakt (två scenarier) ##########');
 console.log('Samma händelsetakt (var 5:e sekund), samma ungefärliga kostnad per händelse — skillnaden är ENDAST ärEko.');
-körScenario('Ekande bank (mybank/räntehöjning, ärEko=true rakt igenom)', ekandeBank, 65);
-körScenario('Eskalerande jakt (genomfarten/kupp + överlämning, ärEko=false rakt igenom)', eskalerandeJakt, 65);
-
-// Jämförelse: samma bank-scenario UTAN dämpning (som om vi inte byggt den
-// alls) — visar vad Majids brusloop faktiskt gjorde mot lasten innan fixen.
-const ekandeBankUtanDämpning = ekandeBank.map(h => ({ ...h, ärEko: false }));
-console.log('\n--- Kontrollkörning: samma bank-sekvens men LÅTSAS att dämpningen inte fanns (ärEko satt till false) ---');
-körScenario('Ekande bank UTAN dämpning (hypotetiskt, innan fixen)', ekandeBankUtanDämpning, 65);
+körScenario('1) Ekande bank (mybank/räntehöjning, ärEko=true rakt igenom — ska AVKLINGA)', ekandeBank, 65);
+körScenario('2) Eskalerande jakt (genomfarten/kupp + överlämning, ärEko=false rakt igenom — ska förbli FULL)', eskalerandeJakt, 65);
 
 console.log('\nSlutsats dämpning: banken (ärEko=true) svalnar snabbt trots upprepningen — femte ekot kostar ~6% av fullt pris.');
 console.log('Jakten (ärEko=false) kostar fullt varje gång, oavsett upprepning — dramatiken är orörd.');
-console.log('Utan dämpning hade banken kostat lika mycket som jakten varje gång — det är precis loopen @Majid pekade ut.');
 
 // ---------- ström-varning: EN varning per uppladdning, inte sex ----------
 // Klubbkväll-scenariot (ovan) tar sex separata skov mot taket och når avbrott

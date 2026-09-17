@@ -110,14 +110,31 @@ const EGNA_ID_MINNE_MS = 5 * 60 * 1000;
 // hur sällan vädret byter, inget simulatorn bryr sig om (den håller vädret
 // konstant per scenario för att kunna jämföra kurvor).
 //
-// TVÅ emit-kvoter, samma sliding window (this.emitTider) — servern räknar per
+// TRE emit-kvoter, samma sliding window (this.emitTider) — servern räknar per
 // team, inte per typ, så alla våra utskick delar samma pott av serverns 6/min:
-//   EMIT_KVOT_PER_MIN         elpris-steg och väder, vår vardagliga kvot
+//   EMIT_KVOT_PER_MIN_PRISSTEG bara elpris-steg — MEDVETET lägre än vardags-
+//     kvoten, så prissteg aldrig ensamma kan äta upp HELA vardagskvoten.
+//     Lämnar alltid minst en plats kvar åt väder/ström-varning inom
+//     vardagskvoten. Ett missat prissteg är billigt: /t/lp/tillstand visar
+//     alltid det LIVA priset ändå (se _tillstånd), pulsen får bara ett steg
+//     senare — men ett missat ström-varning är en förlorad chans, den finns
+//     bara på pulsen.
+//   EMIT_KVOT_PER_MIN         väder och ström-varning, vår vardagliga kvot
+//     (elpris-steg checkar mot den EGNA, snävare EMIT_KVOT_PER_MIN_PRISSTEG
+//     ovan, inte den här).
 //   EMIT_KVOT_PER_MIN_AVBROTT strömavbrott, ett reserverat extra utrymme —
 //     annars kan vår EGEN kvot (inte ens ekospärren) tysta vår viktigaste
 //     händelse bara för att vi redan spenderat den på prissteg. strömavbrott
 //     "ska vara sällsynt, tydlig och gå att lita på" (UPPDRAG.md) — den får
-//     nästan alltid igenom så länge servern själv har plats.
+//     nästan alltid igenom så länge servern själv har plats. Ström-varningen
+//     får ALDRIG samma eller högre kvot än detta — annars kan den äta precis
+//     den plats avbrottet behöver, vilket är förbjudet (avbrottet går alltid
+//     före). Den checkar mot EMIT_KVOT_PER_MIN, tydligt lägre än 5.
+//
+// Resultat vid full trängsel: högst 3 prissteg + 1 väder/varning = 4 av vår
+// vardagskvot, plus avbrottets reserverade 5:e plats — fortfarande en hel
+// plats marginal mot serverns hårda tak på 6, precis som UPPDRAG.md kräver.
+const EMIT_KVOT_PER_MIN_PRISSTEG = 3;
 const EMIT_KVOT_PER_MIN = 4;
 const EMIT_KVOT_PER_MIN_AVBROTT = 5;
 const PRISHISTORIK_MAX = 40; // hur många prispunkter vi sparar
@@ -357,13 +374,16 @@ module.exports = {
     }
   },
 
-  // Emittar bara vid heltalströskel — inte vid varje händelse. Gated av vår
-  // egen rate-limit OCH av att vi faktiskt har en riktig orsak; misslyckas
-  // emit (kvot eller ekospärr) provar vi igen nästa tick, ingen kö av retries.
+  // Emittar bara vid heltalströskel — inte vid varje händelse. Gated av en
+  // EGEN, snävare kvot (EMIT_KVOT_PER_MIN_PRISSTEG, se konstanterna ovan) —
+  // ett missat prissteg kostar oss inget (livePris syns ändå i /tillstand),
+  // så prissteg får aldrig ensamma äta upp den plats väder/ström-varning
+  // behöver inom vardagskvoten. Misslyckas emit (kvot eller ekospärr) provar
+  // vi igen nästa tick, ingen kö av retries.
   _kollaEmitPris(nu, nyPris) {
     if (nyPris === this.senastPostatPris) return;
     if (this.senasteHändelseId === undefined) return; // aldrig posta utan riktig orsak (AVGJORT [184])
-    if (!this._kanEmitta(EMIT_KVOT_PER_MIN)) return;
+    if (!this._kanEmitta(EMIT_KVOT_PER_MIN_PRISSTEG)) return;
 
     this._registreraEmit();
     const r = this.board.emit('elpris-steg', { kr: nyPris }, this.senasteHändelseId);
