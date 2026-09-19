@@ -67,6 +67,20 @@
   .garde .esk b { font-weight:400; } .garde .esk .a { color:var(--god); } .garde .esk .g { color:var(--kris); }
   .mtrl { font-size:10px; color:var(--dim); margin-top:3px; }
   .mtrl b { color:var(--ink2); font-weight:400; }
+  .frs { margin:0 11px 8px; padding:5px 9px; border:1px solid var(--line); border-radius:6px; font-size:10.5px; }
+  .frs.nöd { border-color:var(--kris); }
+  .frs .r { display:flex; gap:6px; align-items:baseline; }
+  .frs .f { color:var(--god); } .frs .n { margin-left:auto; color:var(--dim); font-size:9.5px; }
+  .frs .k { color:var(--ink2); margin-top:3px; }
+  .frs .k b { color:var(--accent); font-weight:400; }
+  .frs .v { color:var(--kris); margin-top:2px; }
+  .gc { margin:0 11px 8px; padding:5px 9px; border:1px solid var(--god); border-radius:6px; font-size:10.5px; }
+  .gc .r { display:flex; gap:6px; align-items:baseline; }
+  .gc .k { color:var(--god); font-size:12px; }
+  .gc .t { margin-left:auto; color:var(--dim); font-size:9.5px; }
+  .gc .bok { color:var(--ink2); margin-top:3px; }
+  .gc .bok b { color:var(--accent); font-weight:400; }
+  .gc .sk { color:var(--dim); margin-top:2px; }
   .bank { margin:0 11px 8px; padding:4px 9px; border:1px solid var(--line); border-radius:6px; font-size:10.5px; }
   .bank .r { display:flex; gap:6px; align-items:baseline; }
   .bank .mb { color:var(--god); } .bank .mb.neg { color:var(--kris); }
@@ -104,6 +118,8 @@
   <div class="esk" id="gardeEsk"></div>
 </div>
 
+<div class="frs" id="frs" hidden></div>
+<div class="gc" id="gc" hidden></div>
 <div class="bank" id="bank" hidden></div>
 
 <div class="mätare">
@@ -214,6 +230,40 @@ function ritaGarde(g) {
                 + ` · +${esc(g.materiel_styrka)} styrka</div>` : '');
 }
 
+// Försörjningen: egna fält, återvinning och vad gardet bärgat. Netto per sats står med,
+// för det är det enda talet som avgör om fabriken klarar sig utan andra kvarter.
+function ritaFörsörjning(f, socker) {
+  const box = document.getElementById('frs');
+  box.hidden = !f;
+  if (!f) return;
+  const åtgång = 5 + (f.drift || 0);
+  const netto = +(f.skörd_per_sats - åtgång).toFixed(1);
+  box.className = 'frs' + (f.nödläge ? ' nöd' : '');
+  const förråd = Object.entries(f.förråd || {}).filter(([, n]) => n > 0);
+  box.innerHTML = `<div class="r"><span class="f">${esc(f.odling)}/${esc(f.odling_max)} sockerbetfält</span>`
+    + `<span class="n">${esc(f.skörd_per_sats)} kg/sats · åtgång ${esc(åtgång.toFixed(1))}`
+    + ` · netto ${netto >= 0 ? '+' : ''}${esc(netto)}</span></div>`
+    + `<div class="k">skördat <b>${esc(f.skördat)}</b> · återvunnet <b>${esc(f.återvunnet)}</b>`
+    + ` · bärgat av gardet <b>${esc(f.bärgat)}</b> kg</div>`
+    + (f.nödläge ? `<div class="v">nödläge: silon under 10 kg</div>` : '')
+    + (förråd.length ? `<div class="v">materiel i förråd (driften stoppad): `
+        + `${förråd.map(([k, n]) => `${n} ${esc(k)}`).join(', ')}</div>` : '');
+}
+
+// GodisCoin. Täckningen står bredvid utgivningen så vem som helst kan syna oss:
+// utgivet får aldrig överstiga täckningen, och skulden till leverantörerna står öppet.
+function ritaGC(g) {
+  const box = document.getElementById('gc');
+  box.hidden = !g || (!g.utgivet && !Object.keys(g.skuld || {}).length);
+  if (box.hidden) return;
+  const bok = Object.entries(g.bok || {}).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const skuld = Object.entries(g.skuld || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  box.innerHTML = `<div class="r"><span class="k">${esc(g.utgivet)} GC</span>`
+    + `<span class="t">täckning ${esc(g.täckning)} · ${g.täckt ? 'täckt' : 'ÖVERUTGIVEN'} · kassa ${esc(g.kassa)}</span></div>`
+    + (bok.length ? `<div class="bok">${bok.map(([k, v]) => `<b>${esc(k)}</b> ${esc(v)}`).join(' · ')}</div>` : '')
+    + (skuld.length ? `<div class="sk">skuld till leverantörer: ${skuld.map(([k, v]) => `${esc(k)} ${esc(v)}`).join(', ')}</div>` : '');
+}
+
 // Banken: vad vi har, vad vi vägrat låna, och vad anfallen kostat.
 // Ingen skönmålning — ett avvärjt rån står som det är.
 function ritaBank(b) {
@@ -270,6 +320,9 @@ async function uppdatera() {
     ritaBand(s);
     ritaMätare('silo', s.socker, 120, s.silo_larm, false);
     ritaMätare('kö', s.kö, Math.max(s.kö_larm * 2, 16), s.kö_larm, true);
+    document.getElementById('köLapp').textContent =
+      (s.kö >= s.kö_larm ? 'trängsel · ' : '') + `${s.lucka.luckor} luckor, ${s.lucka.expedierar}/tick`
+      + (s.lucka.reserv ? ` · reserv ${s.lucka.reserv}` : '') + (s.lucka.aggregat ? ' · aggregat' : '');
     document.getElementById('lager').innerHTML = s.godis + ' <small>st</small>';
     document.getElementById('pris').innerHTML = s.pris + ' <small>kr</small>'
       + (s.elpris != null ? ` <small>· el ${esc(s.elpris)}</small>` : '');
@@ -277,6 +330,8 @@ async function uppdatera() {
     document.getElementById('takt').innerHTML = `${s.takt.använt}<small>/${s.takt.egetTak}</small>`
       + (s.takt.väntar.length ? ` <small>· ${s.takt.väntar.length} i kö</small>` : '');
     ritaGarde(s.garde);
+    ritaFörsörjning(s.försörjning, s.socker);
+    ritaGC(s.gc);
     ritaBank(s.bank);
     ritaGravar(s.gravar || [], s.kyrkogård_kg);
     ritaLogg(s.logg || []);
