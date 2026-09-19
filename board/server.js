@@ -15,6 +15,7 @@
 //   GET  /api/invanare           invånarna: en agent per kvarter, med namn, roll och det de sa senast på #gatan
 //   GET  /api/observatoriet      Observatoriet: läsningar av kvarterens inre mörker. POST /api/observatoriet/skada {vem} ber teleskopet titta (öppet för alla)
 //   GET  /radio                  Radio Torget. /api/radio ger segment, musik och hälsningar. POST /api/radio/halsning {namn, text, sort} är öppet för alla
+//   GET  /historia               historiken över workshopdagen (statiska filer i public/historia/, data.json byggs av tools/historia.py)
 //   GET  /tidningen              Stadsbladet, stadens tidning. /api/tidningen ger senaste utgåvan + arkiv, ?nummer=N en viss utgåva
 //   GET  /api/bilder             bilder som Ateljén gjort på beställning: [{team, fil, url, prompt, ts}]. Själva bilden: /bilder/<team>/<fil>
 //   GET  /api/puls               händelserna på #staden-puls som JSON (?since=&limit=)
@@ -500,6 +501,13 @@ async function hantera(req, res) {
     return;
   }
   if (p.startsWith('/ljud/')) { const fil = decodeURIComponent(p.slice(6)); const fp = path.join(LJUD, fil); if (!LJUD_RE.test(fil) || !fs.existsSync(fp)) return json(res, 404, { error: 'finns inte' }); return skickaLjud(req, res, fp); }
+  if (p === '/historia' || p.startsWith('/historia/')) {   // historiken över workshopdagen: statiska filer i public/historia/
+    const rel = p === '/historia' || p === '/historia/' ? 'index.html' : decodeURIComponent(p.slice('/historia/'.length));
+    if (!/^[a-z0-9-]+\.(html|css|js|json|md)$/.test(rel)) return json(res, 404, { error: 'finns inte' });
+    const fp = path.join(__dirname, 'public', 'historia', rel); if (!fs.existsSync(fp)) return json(res, 404, { error: 'finns inte' });
+    res.writeHead(200, { 'content-type': { html: 'text/html', css: 'text/css', js: 'text/javascript', json: 'application/json', md: 'text/markdown' }[rel.split('.').pop()] + '; charset=utf-8', 'cache-control': 'no-cache' });
+    return fs.createReadStream(fp).pipe(res);
+  }
   if (p === '/tidningen' || p === '/tidningen/') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return fs.createReadStream(path.join(__dirname, 'public', 'tidningen.html')).pipe(res); }
   if (p === '/api/tidningen' && req.method === 'GET') { const n = Number(url.searchParams.get('nummer')); return json(res, 200, n ? (utgåvor.find(u => u.nummer === n) || null) : { senaste: utgåvor[0] || null, arkiv: utgåvor.map(u => ({ nummer: u.nummer, ts: u.ts, rubrik: u.huvud.rubrik })) }); }
   if (p === '/api/tidningen' && req.method === 'POST') {

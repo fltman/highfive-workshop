@@ -48,6 +48,39 @@
       </div>
     </section>
 
+    <section class="recycling" aria-labelledby="recyclingTitle">
+      <div class="recycling-copy">
+        <p class="eyebrow">Kedjans sista anhalt</p>
+        <h2 id="recyclingTitle">Återbruket</h2>
+        <p>Händelser på djup 4 kan inte driva kedjan vidare. Här sorteras fem uttjänta slut till ett spårbart materialparti som återvänder på djup 1.</p>
+        <div class="recycling-rule"><span>5 kedjeändar</span><b>→</b><span>1 materialparti</span></div>
+      </div>
+
+      <div class="recycling-machine">
+        <div class="machine-head">
+          <span id="recyclingState">Väntar på kedjeändar</span>
+          <strong><span id="recyclingCount">0</span>/5</strong>
+        </div>
+        <div class="conveyor" id="recyclingQueue" aria-label="Kedjeändar i sorteringsbandet"></div>
+        <div class="press"><span></span><b>PRESS</b><span></span></div>
+        <div class="material-bins" aria-label="Material i kön">
+          <div data-sort="papper"><i></i><span>Papper</span><b id="binPaper">0</b></div>
+          <div data-sort="metall"><i></i><span>Metall</span><b id="binMetal">0</b></div>
+          <div data-sort="organiskt"><i></i><span>Organiskt</span><b id="binOrganic">0</b></div>
+          <div data-sort="glas"><i></i><span>Glas</span><b id="binGlass">0</b></div>
+          <div data-sort="blandat"><i></i><span>Blandat</span><b id="binMixed">0</b></div>
+        </div>
+      </div>
+
+      <div class="recycling-output">
+        <p class="eyebrow">Senaste leverans</p>
+        <strong id="recyclingBatches">0</strong>
+        <span>skapade partier</span>
+        <p id="recyclingLatest">Inget materialparti ännu.</p>
+        <small id="recyclingTotal">0 kedjeändar insamlade</small>
+      </div>
+    </section>
+
     <section class="lower">
       <article class="inspector" aria-live="polite">
         <p class="eyebrow">Valt kvarter</p>

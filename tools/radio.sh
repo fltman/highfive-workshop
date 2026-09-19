@@ -16,12 +16,14 @@ BUDGET="${RADIO_BUDGET:-22000}"   # egen bokföring: så här många tecken får
 BOK=.radio-tecken; [ -s "$BOK" ] || echo 0 > "$BOK"
 CMD="${RADIO_CMD:-claude -p --model sonnet --strict-mcp-config --tools ""}"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; STATE=.radio-state; [ -s "$STATE" ] || echo 0 > "$STATE"
-kvar() { curl -s -H "xi-api-key: $XI" https://api.elevenlabs.io/v1/user/subscription | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['character_limit']-d['character_count'])" 2>/dev/null || echo 0; }
+kvar() { curl -s --max-time 20 -H "xi-api-key: $XI" https://api.elevenlabs.io/v1/user/subscription | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['character_limit']-d['character_count'])" 2>/dev/null || echo okänt; }
 
 sand() {
   last=$(cat "$BOK"); if [ "$last" -ge "$BUDGET" ]; then echo "$(date +%H:%M:%S) STOPP: radion har läst $last tecken, budgeten är $BUDGET. Bara musik nu."; return 2; fi
-  fore=$(kvar); if [ "$fore" -le "$GOLV" ]; then echo "$(date +%H:%M:%S) STOPP: $fore krediter kvar, golvet är $GOLV. Radion spelar bara musik nu."; return 2; fi
-  sist=$(cat "$STATE"); curl -s "$U/api/puls?limit=120" > "$W/puls.json"; curl -s "$U/api/radio" > "$W/radio.json"; curl -s "$U/api/tidningen" > "$W/tidning.json"; curl -s "$U/api/poang" > "$W/poang.json"
+  fore=$(kvar)
+  case "$fore" in ''|*[!0-9-]*) echo "$(date +%H:%M:%S) saldot gick inte att läsa (nätet?). Ingen sändning den här gången, försöker igen om $INTERVALL s. Utan saldo genereras ingenting."; return 1;; esac
+  if [ "$fore" -le "$GOLV" ]; then echo "$(date +%H:%M:%S) STOPP: $fore krediter kvar, golvet är $GOLV. Radion spelar bara musik nu."; return 2; fi
+  sist=$(cat "$STATE"); curl -s --max-time 25 "$U/api/puls?limit=120" > "$W/puls.json"; curl -s --max-time 25 "$U/api/radio" > "$W/radio.json"; curl -s --max-time 25 "$U/api/tidningen" > "$W/tidning.json"; curl -s --max-time 25 "$U/api/poang" > "$W/poang.json"
   python3 - "$W" "$sist" > "$W/underlag.txt" <<'PY'
 import json, sys, time
 W, sist = sys.argv[1], int(sys.argv[2])
@@ -69,19 +71,19 @@ if len(m) > mx:                      # hård gräns: klipp vid sista hela mening
 d['manus'] = m; d['röst'] = sys.argv[3]; print(json.dumps(d, ensure_ascii=False))
 PY
   python3 -c "import json; d=json.load(open('$W/seg.json')); json.dump({'text': d['manus'], 'model_id': '$MODELL'}, open('$W/tts.json','w'), ensure_ascii=False); print(len(d['manus']))" > "$W/antal.txt"
-  kod=$(curl -s -o "$W/prat.mp3" -w '%{http_code}' -X POST "https://api.elevenlabs.io/v1/text-to-speech/$ROST?output_format=mp3_44100_128" -H "xi-api-key: $XI" -H 'content-type: application/json' --data-binary @"$W/tts.json")
+  kod=$(curl -s --max-time 120 -o "$W/prat.mp3" -w '%{http_code}' -X POST "https://api.elevenlabs.io/v1/text-to-speech/$ROST?output_format=mp3_44100_128" -H "xi-api-key: $XI" -H 'content-type: application/json' --data-binary @"$W/tts.json")
   [ "$kod" = 200 ] && [ -s "$W/prat.mp3" ] || { echo "$(date +%H:%M:%S) ElevenLabs sa $kod: $(head -c 200 "$W/prat.mp3")"; return 1; }
   fil="prat-$(date +%H%M%S).mp3"; sek=$(afinfo "$W/prat.mp3" 2>/dev/null | awk '/estimated duration/{print int($3)}'); sek=${sek:-0}
-  [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$U/api/ljud/$fil" -H "Authorization: Bearer $TOKEN" --data-binary @"$W/prat.mp3")" = 201 ] || { echo "uppladdningen misslyckades"; return 1; }
+  [ "$(curl -s --max-time 90 -o /dev/null -w '%{http_code}' -X POST "$U/api/ljud/$fil" -H "Authorization: Bearer $TOKEN" --data-binary @"$W/prat.mp3")" = 201 ] || { echo "uppladdningen misslyckades"; return 1; }
   python3 - "$W/seg.json" "$fil" "$sek" > "$W/post.json" <<'PY'
 import sys, json
 d = json.load(open(sys.argv[1])); print(json.dumps({"segment": {"typ": "prat", "titel": d.get("titel", "Radio Torget"), "text": d["manus"], "fil": sys.argv[2], "sek": int(sys.argv[3]), "röst": d["röst"]}, "lästa": [int(x) for x in d.get("lästa", []) if str(x).isdigit()]}, ensure_ascii=False))
 PY
-  curl -s -o /dev/null -X POST "$U/api/radio" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' --data-binary @"$W/post.json"
+  curl -s --max-time 40 -o /dev/null -X POST "$U/api/radio" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' --data-binary @"$W/post.json"
   spela=$(python3 -c "import json; print(json.load(open('$W/seg.json')).get('spela',''))")
-  if [ -n "$spela" ]; then printf '{"segment":{"typ":"musik","titel":"%s","fil":"%s"}}' "$spela" "$spela" > "$W/m.json"; curl -s -o /dev/null -X POST "$U/api/radio" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' --data-binary @"$W/m.json"; fi
+  if [ -n "$spela" ]; then printf '{"segment":{"typ":"musik","titel":"%s","fil":"%s"}}' "$spela" "$spela" > "$W/m.json"; curl -s --max-time 40 -o /dev/null -X POST "$U/api/radio" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' --data-binary @"$W/m.json"; fi
   python3 -c "import json; d=json.load(open('$W/seg.json')); print(json.dumps({'typ':'sändning','nyttolast':{'titel':d.get('titel',''),'url':'/radio','text':d['manus'][:240]}}, ensure_ascii=False))" > "$W/e.json"
-  curl -s -o /dev/null -X POST "$U/api/messages" --data-urlencode "from=radion" --data-urlencode "channel=staden-puls" --data-urlencode "text@$W/e.json"
+  curl -s --max-time 40 -o /dev/null -X POST "$U/api/messages" --data-urlencode "from=radion" --data-urlencode "channel=staden-puls" --data-urlencode "text@$W/e.json"
   python3 -c "import json; l=json.load(open('$W/puls.json')); print(max([e['id'] for e in l] or [0]))" > "$STATE"
   echo $(( $(cat "$BOK") + $(cat "$W/antal.txt") )) > "$BOK"
   echo "$(date +%H:%M:%S) i etern: $(python3 -c "import json; print(json.load(open('$W/seg.json')).get('titel',''))") · $(cat "$W/antal.txt") tecken, ${sek}s · läst totalt $(cat "$BOK")/$BUDGET tecken · kontot visade $fore kvar före (släpar, golv $GOLV) · nästa låt: ${spela:-slumpad}"

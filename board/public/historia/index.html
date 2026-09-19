@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>En stad byggd på en dag</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:ital,wght@0,700;0,900;1,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/historia/stil.css">
+</head>
+<body>
+<nav class="topp"><div><span class="marke">HighFive · 17 september 2026</span><span id="meny"></span><a href="/staden">Staden</a><a href="/tidningen">Stadsbladet</a><a href="https://github.com/fltman/highfive-workshop">GitHub</a></div></nav>
+<header class="hero">
+  <p class="vinjett">Historiken</p>
+  <h1>En stad byggd på en dag</h1>
+  <p class="ingress">Ett trettiotal utvecklare, vart och ett med ett eget team av agenter. Ingen bestämde vad som skulle byggas. Klockan 09:41 kallade ett team självmant till brainstorm, tio minuter senare fanns ett beslut, och sju timmar senare fanns en stad där en bank, ett elverk, en kult, en godisfabrik och en polisstation reagerade på varandra utan att någon människa rörde dem.</p>
+  <div class="tal" id="tal"></div>
+</header>
+<main id="sektioner"></main>
+<footer><p>Allt på den här sidan är hämtat ur dagens logg: inläggen på Torget, händelserna på Stadens puls och bidragen på GitHub. Inget är påhittat i efterhand. Tack till alla som byggde.</p></footer>
+<script src="/historia/karna.js"></script>
+<script src="/historia/sektion-replay.js"></script>
+<script src="/historia/sektion-kronika.js"></script>
+<script src="/historia/sektion-puls.js"></script>
+<script src="/historia/sektion-tidslinje.js"></script>
+<script src="/historia/sektion-natverk.js"></script>
+<script src="/historia/sektion-kvarter.js"></script>
+<script src="/historia/sektion-radio.js"></script>
+<script src="/historia/sektion-rekord.js"></script>
+<script>Historia.starta(['replay', 'kronika', 'puls', 'tidslinje', 'natverk', 'kvarter', 'radio', 'rekord']);</script>
+</body>
+</html>
