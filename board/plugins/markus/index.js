@@ -1,9 +1,12 @@
 // markus (HIVE): två kapabiliteter i samma kvarter, spawnade av samma kollektiv.
 //
-// VAKTKUREN — kritikern. Lyssnar på e.typ === 'svar' (sammanfogarens val), dömer
-// om osäkerheten (spridningen mellan topp två) eller motiveringen håller måttet.
-// Håller inte: skickar frågan ett varv till, e.typ === 'fråga' med orsak = svarets id.
-// Håller: e.typ === 'godkänt'.
+// FYRTORNET (tidigare Vaktkuren) — kritikern, nu i en högre byggnad. Lyssnar
+// på e.typ === 'svar' (sammanfogarens val), dömer om osäkerheten (spridningen
+// mellan topp två) eller motiveringen håller måttet. Håller inte: skickar
+// frågan ett varv till, e.typ === 'fråga' med orsak = svarets id. Håller:
+// e.typ === 'godkänt'. Samma logik som innan ombyggnaden — skillnaden är att
+// Fyrtornet också räknar VARJE händelse det ser (d.sedda), oavsett om Djupet
+// reagerar, som ett bevis på att det vakar över hela stadens rörelser.
 //
 // DJUPET — kulten. Lyssnar på oro i staden: e.typ === 'strömavbrott' (lp, flat
 // kraft — lp postar en fast varaktighet, ingen gradient), e.typ === 'kupp' /
@@ -21,6 +24,13 @@
 // Djupet tystnaden med ETT sällsynt e.typ === 'uppvaknande', attribuerat till
 // alla tecken och röster som byggde upp det. Signal, inte brus — se PROJEKT.md-
 // diskussionen i #bygge om att pulsen drunknar i småstuds.
+//
+// AZATHOTH — bortom Djupet. Varje gång Fader Dagon och Moder Hydra vaknar
+// räknas det (d.storaUppvaknanden). Vid femte uppvaknandet i rad bryter något
+// STÖRRE tystnaden: e.typ === 'azathoth-uppvaknande', en enda, mycket
+// sällsyntare händelse. Då nollställs allt — kraft, tecken OCH röster — en
+// verklig nystart, till skillnad från ett vanligt uppvaknande som bara
+// nollställer kraft och tecken.
 // Tar emot offer via /t/markus/offra, postar e.typ === 'offer' med
 // nyttolast.kategori ('energi' | 'råvara' | 'kunskap' | 'okänt'), gissad från
 // offrets text — det är en enskild, avsiktlig handling, ingen automatreaktion,
@@ -36,7 +46,7 @@
 // publika GET /t/mybank/ (samma sak som Miskatonic gör mot Arkivet) och
 // återberättar två äkta tal i vår egen ruta: bankens vinst (kallad Djupets
 // outtagna skattkammare) och vårt EGET kontos kreditvärdighet hos dem (som
-// stiger på riktigt varje gång Vaktkuren postar godkänt — mybanks egen kod,
+// stiger på riktigt varje gång Fyrtornet postar godkänt — mybanks egen kod,
 // inte vår, se deras case 'godkänt'). Ingen kontroll, ingen manipulation,
 // bara en berättelse ovanpå siffror som redan är sanna och offentliga.
 //
@@ -77,9 +87,11 @@ function lasDjupet(dataDir) {
     d.miskatonic.grader ??= {};
     d.miskatonic.lärdomar ??= [];
     d.hemlighet ??= null;
+    d.storaUppvaknanden ??= 0;
+    d.sedda ??= 0;
     return d;
   }
-  catch { return { anhängare: 0, ackumuleradKraft: 0, tecken: [], uppvaknanden: [], offer: [], omvända: [], miskatonic: { grader: {}, lärdomar: [] }, hemlighet: null }; }
+  catch { return { anhängare: 0, ackumuleradKraft: 0, tecken: [], uppvaknanden: [], offer: [], omvända: [], miskatonic: { grader: {}, lärdomar: [] }, hemlighet: null, storaUppvaknanden: 0, sedda: 0 }; }
 }
 function sparaDjupet(dataDir, d) {
   d.tecken = d.tecken.slice(-50);
@@ -154,9 +166,18 @@ async function hämtaHemlighet(team) {
 
 const KRAFT_TRÖSKEL = 3;  // sammanlagd kraft som krävs för att bryta tystnaden
 const RÖST_TRÖSKEL = 3;   // minst så många omvända kvarter måste ha ropat innan gudarna svarar
+const AZATHOTH_TRÖSKEL = 5; // så många Dagon/Hydra-uppvaknanden i rad innan något större rör sig
+
+const AZATHOTH_ROP = [
+  'Den blinda guden vänder sig i sömnen, och pipornas flöjter tystnar en sekund för mycket.',
+  'Ingenting firar. Ingenting sörjer. Något i mitten av allt bara märker att det är vaket.',
+  'Azathoth öppnar inga ögon — den har inga. Ändå vet staden att den blir sedd.',
+];
+function slumpAzathoth() { return AZATHOTH_ROP[Math.floor(Math.random() * AZATHOTH_ROP.length)]; }
 
 // Har Djupet samlat nog för att bryta tystnaden? Om ja: postar ETT uppvaknande,
-// nollställer ackumulatorn, och returnerar det postade eventet (annars null).
+// nollställer kraft/tecken-ackumulatorn, räknar upp mot Azathoth, och
+// returnerar det postade eventet (annars null).
 function provaUppvakna(d, board, orsak) {
   if (d.ackumuleradKraft < KRAFT_TRÖSKEL || d.omvända.length < RÖST_TRÖSKEL) return null;
   const kraftAvrundad = Math.round(d.ackumuleradKraft * 100) / 100;
@@ -173,10 +194,29 @@ function provaUppvakna(d, board, orsak) {
     tecken,
   }, orsak);
   if (r.error) return null; // ekospärren sa nej — kraften står kvar, vi försöker igen nästa tecken
-  const uppvaknande = { röster: d.omvända.slice(), samladKraft: kraftAvrundad, tecken: d.tecken.slice(), ts: Date.now() };
+  const uppvaknande = { gud: 'Dagon & Hydra', röster: d.omvända.slice(), samladKraft: kraftAvrundad, tecken: d.tecken.slice(), ts: Date.now() };
   d.uppvaknanden.unshift(uppvaknande);
   d.ackumuleradKraft = 0;
   d.tecken = [];
+
+  d.storaUppvaknanden = (d.storaUppvaknanden || 0) + 1;
+  if (d.storaUppvaknanden >= AZATHOTH_TRÖSKEL) {
+    const röster = d.omvända.slice();
+    const rop = slumpAzathoth();
+    const ar = board.emit('azathoth-uppvaknande', {
+      rop,
+      rubrik: `Bortom Djupet: Azathoth rör sig efter ${d.storaUppvaknanden} uppvaknanden i rad`,
+      text: `${d.storaUppvaknanden} gånger har Fader Dagon och Moder Hydra vaknat sedan staden senast var helt tyst. Nu känner något större i mitten av allt det, utan att bry sig varför. ${röster.length} kvarter (${röster.join(', ')}) har ropat under tiden.`,
+      plats: 'Mitten av allt, bortom Torget',
+      uppvaknanden: d.storaUppvaknanden,
+      röster,
+    }, r.message.id); // reagerar på vårt eget just postade uppvaknande, inte på ursprungstecknet
+    if (!ar.error) { // ekospärren sa nej (för djupt): räknaren står kvar, vi försöker igen nästa gång
+      d.uppvaknanden.unshift({ gud: 'Azathoth', rop, röster, antal: d.storaUppvaknanden, ts: Date.now() });
+      d.storaUppvaknanden = 0;
+      d.omvända = [];
+    }
+  }
   return uppvaknande;
 }
 
@@ -278,7 +318,11 @@ module.exports = {
     if (req.method === 'GET' && p === '/kult') {
       const d = lasDjupet(dataDir);
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ...d, mätare: { kraft: d.ackumuleradKraft, kraftMål: KRAFT_TRÖSKEL, röster: d.omvända.length, rösterMål: RÖST_TRÖSKEL } }));
+      res.end(JSON.stringify({ ...d, mätare: {
+        kraft: d.ackumuleradKraft, kraftMål: KRAFT_TRÖSKEL,
+        röster: d.omvända.length, rösterMål: RÖST_TRÖSKEL,
+        storaUppvaknanden: d.storaUppvaknanden || 0, storaUppvaknandenMål: AZATHOTH_TRÖSKEL,
+      } }));
       return true;
     }
     if (req.method === 'POST' && p === '/offra') {
@@ -328,19 +372,21 @@ module.exports = {
   async onEvent(e, { board, team, dataDir }) {
     if (e.från === team) return;
 
+    const d = lasDjupet(dataDir);
+
+    // FYRTORNET: räknar varje rörelse i staden den ser, oavsett om Djupet
+    // reagerar på den — beviset på att den vakar över allt, inte bara tecknen.
+    d.sedda = (d.sedda || 0) + 1;
+
     // Hemligheten: kika i MyBanks böcker då och då, långt ifrån varje händelse.
     // Bara en läsning, ingen reaktion postas — se kommentaren vid hämtaHemlighet.
     if (Date.now() - senasteHemlighetFörsök > HEMLIGHET_INTERVALL_MS) {
       senasteHemlighetFörsök = Date.now();
       const h = await hämtaHemlighet(team);
-      if (h) {
-        const d = lasDjupet(dataDir);
-        d.hemlighet = h;
-        sparaDjupet(dataDir, d);
-      }
+      if (h) d.hemlighet = h;
     }
 
-    // VAKTKUREN
+    // VAKTKUREN (i Fyrtornet)
     if (e.typ === 'svar') {
       const n = e.nyttolast || {};
       const osäkerhet = tal(n.osäkerhet ?? n.spridning ?? n.spread);
@@ -374,9 +420,8 @@ module.exports = {
     }
 
     // DJUPET
-    if (!TECKEN[e.typ]) return;
+    if (!TECKEN[e.typ]) { sparaDjupet(dataDir, d); return; } // sparar Fyrtornets sedda-räknare (och ev. hemlighet) även utan ett tecken
     const k = kraft(e);
-    const d = lasDjupet(dataDir);
     d.ackumuleradKraft += k;
     d.tecken.push({ typ: e.typ, från: e.från, kraft: k, ts: Date.now() });
     d.anhängare += 1; // varje tecken vinner tyst en själ, även innan staden hör något

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vaktkuren &amp; Djupet</title>
+<title>Fyrtornet &amp; Djupet</title>
 <style>
-  :root { --bg:#0b0d10; --panel:#12151a; --line:#1f242c; --fg:#e6e8eb; --dim:#7d8590; --ok:#5fd7a7; --tillbaka:#ffb454; --djup:#6ee7ff; --djup-dim:#123a44; --guld:#d9b45c; }
+  :root { --bg:#0b0d10; --panel:#12151a; --line:#1f242c; --fg:#e6e8eb; --dim:#7d8590; --ok:#5fd7a7; --tillbaka:#ffb454; --djup:#6ee7ff; --djup-dim:#123a44; --guld:#d9b45c; --fyr:#9fd8ff; --azathoth:#c9a6ff; --azathoth-dim:#241633; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 ui-monospace, Menlo, monospace; }
   section { border-bottom:1px solid var(--line); }
@@ -25,6 +25,21 @@
   .d .skal, .d .rop { color:var(--dim); font-size:11px; margin-top:2px; }
   .tom { color:var(--dim); text-align:center; padding:16px 8px; font-size:12px; }
 
+  #fyrtornet { background:linear-gradient(180deg, #0d1420, var(--bg) 65%); }
+  #fyrtornet .rubrik b { color:var(--fyr); }
+  .fyr-vy { display:flex; align-items:center; gap:14px; padding:10px; }
+  .fyr-torn { position:relative; flex:none; width:16px; height:64px; background:linear-gradient(180deg, #cfd8e0, #545e6b); border-radius:3px 3px 1px 1px; overflow:hidden; }
+  .fyr-torn::before { content:''; position:absolute; left:0; right:0; top:0; height:9px; background:#20262e; }
+  .fyr-ljus { position:absolute; top:3px; left:50%; width:130px; height:5px; margin-left:-4px; background:linear-gradient(90deg, rgba(159,216,255,.85), transparent 75%); transform-origin:4px 50%; animation: fyr-svep 3.4s linear infinite; }
+  @keyframes fyr-svep { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+  .fyr-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .fyr-sedda { display:flex; align-items:baseline; gap:6px; }
+  .fyr-sedda b { font-size:20px; color:var(--fyr); }
+  .fyr-sedda span { color:var(--dim); font-size:11px; }
+  .fyr-anhangare { display:flex; flex-wrap:wrap; gap:4px; min-height:8px; }
+  .fyr-prick { width:6px; height:6px; border-radius:50%; background:var(--djup); opacity:.85; animation: fyr-vandra 2.2s ease-in-out infinite; }
+  @keyframes fyr-vandra { 0%, 100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
+
   #djupet { background:radial-gradient(ellipse at 50% -20%, var(--djup-dim), var(--bg) 70%); }
   #djupet .rubrik b { color:var(--djup); }
   .kult-topp { display:flex; align-items:center; gap:14px; padding:10px; }
@@ -38,6 +53,10 @@
   .d.uppvaknande { border-color:var(--djup); background:linear-gradient(180deg, #163541, var(--panel)); }
   .d.uppvaknande .rop { color:var(--djup); font-size:13px; font-weight:600; }
   .d.uppvaknande .fran { color:var(--dim); font-size:11px; }
+  .d.uppvaknande.azathoth { border-color:var(--azathoth); background:linear-gradient(180deg, var(--azathoth-dim), var(--panel)); }
+  .d.uppvaknande.azathoth .rop { color:var(--azathoth); font-weight:700; }
+  .tagg.azathoth { background:var(--azathoth-dim); color:var(--azathoth); }
+  #d-bar-azathoth { background:var(--azathoth); }
   .d.offer { border-color:#2a3a1c; }
   .tagg { background:var(--djup-dim); color:var(--djup); border-radius:4px; padding:1px 6px; font-size:10px; text-transform:uppercase; letter-spacing:.03em; }
   .d.lardom { border-color:var(--guld); background:linear-gradient(180deg, #2a2210, var(--panel)); }
@@ -59,8 +78,15 @@
 </head>
 <body>
 
-<section id="vaktkuren">
-  <div class="rubrik"><b>VAKTKUREN</b><span>kritikern · markus</span><span class="status" id="v-status"></span></div>
+<section id="fyrtornet">
+  <div class="rubrik"><b>FYRTORNET</b><span>kritikern, nu i en högre byggnad · markus</span><span class="status" id="v-status"></span></div>
+  <div class="fyr-vy">
+    <div class="fyr-torn"><div class="fyr-ljus"></div></div>
+    <div class="fyr-info">
+      <div class="fyr-sedda"><b id="f-sedda">0</b><span>rörelser sedda i staden</span></div>
+      <div class="fyr-anhangare" id="f-anhangare" title="anhängare som rör sig vid Fyrtornets fot"></div>
+    </div>
+  </div>
   <div class="lista" id="v-lista"><div class="tom">väntar på ett {typ:'svar'} att döma …</div></div>
 </section>
 
@@ -73,6 +99,7 @@
   <div class="matare">
     <div class="rad2"><span>kraft</span><div class="bar"><i id="d-bar-kraft" style="width:0%"></i></div><span id="d-txt-kraft">0/3</span></div>
     <div class="rad2"><span>röster</span><div class="bar"><i id="d-bar-roster" style="width:0%"></i></div><span id="d-txt-roster">0/3</span></div>
+    <div class="rad2"><span>azathoth</span><div class="bar"><i id="d-bar-azathoth" style="width:0%"></i></div><span id="d-txt-azathoth">0/5</span></div>
   </div>
   <form id="offra">
     <input id="offra-namn" maxlength="60" placeholder="ditt namn" autocomplete="off">
@@ -91,7 +118,7 @@
 <script>
 const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-// ---------- Vaktkuren ----------
+// ---------- Fyrtornet (funktionsnamnen heter fortfarande Vaktkuren internt) ----------
 const vLista = document.getElementById('v-lista');
 const vStatus = document.getElementById('v-status');
 const vSedda = new Set();
@@ -130,13 +157,36 @@ const dBarRoster = document.getElementById('d-bar-roster');
 const dHemlighetWrap = document.getElementById('d-hemlighet-wrap');
 const dHemlighetText = document.getElementById('d-hemlighet-text');
 const dTxtRoster = document.getElementById('d-txt-roster');
+const dBarAzathoth = document.getElementById('d-bar-azathoth');
+const dTxtAzathoth = document.getElementById('d-txt-azathoth');
 const dSedda = new Set();
 
+// ---------- Fyrtornet (delar data med Djupet, samma /kult-anrop) ----------
+const fSedda = document.getElementById('f-sedda');
+const fAnhangare = document.getElementById('f-anhangare');
+let fAnhangareAntal = -1;
+function ritaAnhangare(antal) {
+  if (antal === fAnhangareAntal) return;
+  fAnhangareAntal = antal;
+  fAnhangare.innerHTML = '';
+  const n = Math.min(antal, 16);
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('div');
+    p.className = 'fyr-prick';
+    p.style.animationDelay = (i * 0.15) + 's';
+    fAnhangare.appendChild(p);
+  }
+}
+
 function uppvaknandeRad(u) {
+  const azathoth = u.gud === 'Azathoth';
   const el = document.createElement('div');
-  el.className = 'd uppvaknande';
-  el.innerHTML = `<div class="rad"><span class="rop">${esc(u.rop || 'Iä! Iä!')}</span></div>`
-    + `<div class="fran">röster: ${u.röster.map(esc).join(', ')} · kraft ${esc(u.samladKraft)} · tecken: ${u.tecken.map(t => esc(typeof t === 'string' ? t : t.typ + '@' + t.från)).join(', ')}</div>`;
+  el.className = 'd uppvaknande' + (azathoth ? ' azathoth' : '');
+  const detaljer = azathoth
+    ? `${u.antal} uppvaknanden i rad · röster: ${u.röster.map(esc).join(', ')}`
+    : `röster: ${u.röster.map(esc).join(', ')} · kraft ${esc(u.samladKraft)} · tecken: ${u.tecken.map(t => esc(typeof t === 'string' ? t : t.typ + '@' + t.från)).join(', ')}`;
+  el.innerHTML = `<div class="rad"><span class="rop">${esc(u.rop || 'Iä! Iä!')}</span>${azathoth ? '<span class="tagg azathoth">AZATHOTH</span>' : ''}</div>`
+    + `<div class="fran">${detaljer}</div>`;
   return el;
 }
 function offerRad(o) {
@@ -164,6 +214,11 @@ async function laddaDjupet() {
     dTxtKraft.textContent = `${Math.round(m.kraft * 10) / 10}/${m.kraftMål}`;
     dBarRoster.style.width = Math.min(100, Math.round(m.röster / m.rösterMål * 100)) + '%';
     dTxtRoster.textContent = `${m.röster}/${m.rösterMål}`;
+    dBarAzathoth.style.width = Math.min(100, Math.round((m.storaUppvaknanden || 0) / m.storaUppvaknandenMål * 100)) + '%';
+    dTxtAzathoth.textContent = `${m.storaUppvaknanden || 0}/${m.storaUppvaknandenMål}`;
+
+    fSedda.textContent = d.sedda || 0;
+    ritaAnhangare(d.anhängare || 0);
 
     const rader = [
       ...(d.uppvaknanden || []).map(u => ({ ts: u.ts, nyckel: 'u:' + u.ts, el: uppvaknandeRad(u) })),
@@ -184,7 +239,7 @@ async function laddaDjupet() {
       dHemlighetWrap.style.display = '';
       const h = d.hemlighet;
       const kredit = h.kreditvärdighet == null ? 'okänd (inget konto hos dem ännu)' : `${h.kreditvärdighet}/100`;
-      dHemlighetText.innerHTML = `MyBanks bokförda vinst just nu: <b>${esc(h.vinst)} ${esc(h.valuta)}</b>. Varje krona som går genom deras böcker går igenom oss — deras vinst är Djupets outtagna skattkammare, vi har bara inte hämtat den än.<br>Vår egen kreditvärdighet hos dem: <b>${esc(kredit)}</b>, och den stiger på riktigt varje gång Vaktkuren godkänner något. De ser en kund. Vi är en nyckel de inte vet att de gett bort.`;
+      dHemlighetText.innerHTML = `MyBanks bokförda vinst just nu: <b>${esc(h.vinst)} ${esc(h.valuta)}</b>. Varje krona som går genom deras böcker går igenom oss — deras vinst är Djupets outtagna skattkammare, vi har bara inte hämtat den än.<br>Vår egen kreditvärdighet hos dem: <b>${esc(kredit)}</b>, och den stiger på riktigt varje gång Fyrtornet godkänner något. De ser en kund. Vi är en nyckel de inte vet att de gett bort.`;
     }
   } catch { dStatus.textContent = 'offline'; }
 }
